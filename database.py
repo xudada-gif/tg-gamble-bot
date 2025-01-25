@@ -26,8 +26,6 @@ def connect_to_db():
         )
         cursor = conn.cursor()
         print("✅ 数据库连接成功")
-        # 确保 users 表存在
-        create_table_if_not_exists(cursor, conn)
         return conn, cursor
     except pymysql.MySQLError as err:
         print(f"❌ 数据库连接失败: {err}")
@@ -79,11 +77,21 @@ def update_balance(conn, cursor, user_id: int, amount: int):
 
 def place_bet(conn, cursor, user_id: int, amount: int, choice: str):
     """用户押注"""
-    cursor.execute("UPDATE users SET bet_amount = %s, bet_choice = %s WHERE user_id = %s", (amount, choice, user_id))
+    print(f"UPDATE users SET bet_amount = {amount}, bet_choice = {choice} WHERE user_id = {user_id}")
+    try:
+        cursor.execute("UPDATE users SET bet_amount = %s, bet_choice = %s WHERE user_id = %s", (amount, choice, user_id))
+        conn.commit()
+    except pymysql.MySQLError as err:
+        return err
+
+
+def delete_bet(conn, cursor, user_id: int):
+    """重置制定用户的押注信息"""
+    cursor.execute("UPDATE users SET bet_amount = 0, bet_choice = NULL WHERE user_id = %s", user_id)
     conn.commit()
 
 
-def reset_bets(conn, cursor):
+def delete_bets(conn, cursor):
     """重置所有用户的押注信息"""
     cursor.execute("UPDATE users SET bet_amount = 0, bet_choice = NULL")
     conn.commit()

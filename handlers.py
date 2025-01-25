@@ -1,11 +1,27 @@
-from telegram import Update
+from telegram import Update, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
-from database import connect_to_db, add_user, get_user_info, update_balance, place_bet, reset_bets
+from database import *
+from utils import admin_required, log_command
 
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """处理所有普通消息"""
+    message = update.message.text
+    username = update.effective_user.first_name + update.effective_user.last_name
+    chat_type = update.message.chat.type
+
+    if chat_type == "private":
+        await update.message.reply_text(f"📩 你在私聊中说：{message}")
+    else:
+        await update.message.reply_text(f"📩 {username} 在群聊中说：{message}")
+
+
+# @admin_required
+@log_command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """初始化用户"""
     user_id = update.effective_user.id
-    username = update.effective_user.first_name
+    username = update.effective_user.first_name + update.effective_user.last_name
 
     conn, cursor = connect_to_db()
     if conn is None:
@@ -22,7 +38,56 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
 
 
-async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+@log_command
+@admin_required
+async def show_balances(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """查询所有用户余额"""
+    user_id = update.effective_user.id
+
+    conn, cursor = connect_to_db()
+    if conn is None:
+        await update.message.reply_text("❌ 数据库连接失败，请稍后重试！")
+        return
+
+
+    await update.message.reply_text(f"{user_id}，这个是查询所有用户余额")
+
+
+@log_command
+@admin_required
+async def end_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    结束游戏
+    1、机器摇骰子
+    2、获取所有押注的用户获取值进行判断
+    3、押注对的用户把押注翻倍增加到余额
+    4、清空所有的用户押注
+    """
+    username = update.effective_user.first_name + update.effective_user.last_name
+    conn, cursor = connect_to_db()
+    if conn is None:
+        await update.message.reply_text("❌ 数据库连接失败，请稍后重试！")
+        return
+
+    await update.message.reply_text(f"{username}，这个是结束游戏")
+
+
+@log_command
+@admin_required
+async def show_bets(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """查询所有用户押注信息"""
+    user_id = update.effective_user.id
+
+    conn, cursor = connect_to_db()
+    if conn is None:
+        await update.message.reply_text("❌ 数据库连接失败，请稍后重试！")
+        return
+
+    await update.message.reply_text(f"{user_id}，这个是查询所有用户押注信息")
+
+
+@log_command
+async def show_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """查询余额"""
     user_id = update.effective_user.id
 
@@ -40,26 +105,26 @@ async def check_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
 
 
+@log_command
 async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """用户押注"""
     user_id = update.effective_user.id
     args = context.args  # 获取用户输入的参数
-
     # 参数验证
     if len(args) < 2:
-        await update.message.reply_text("❌ 请输入押注金额和方向（格式：/bet 金额 涨/跌）")
+        await update.message.reply_text("❌ 请输入押注金额和方向（格式：/ya 金额 大/小）")
         return
 
     try:
         amount = int(args[0])  # 解析金额
         choice = args[1]  # 解析涨/跌
-
+        print(amount, choice)
         if amount <= 0:
             await update.message.reply_text("❌ 押注金额必须大于 0！")
             return
 
-        if choice not in ["涨", "跌"]:
-            await update.message.reply_text("❌ 押注方向必须是 '涨' 或 '跌'！")
+        if choice not in ["大", "小"]:
+            await update.message.reply_text("❌ 押注方向必须是 '大' 或 '小'！")
             return
 
         conn, cursor = connect_to_db()
@@ -69,26 +134,42 @@ async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # 查询用户余额
         user_info = get_user_info(cursor, user_id)
+        if user_info['bet_amount'] != 0:
+            await update.message.reply_text("❌ 你已经存在押注！")
+            return
         if not user_info:
             await update.message.reply_text("❌ 你还未加入游戏，请使用 /start 加入！")
             return
-
         if user_info["money"] < amount:
             await update.message.reply_text(f"❌ 余额不足，你当前只有 {user_info['money']} 金币！")
             return
 
         # 更新余额并存储押注
-        update_balance(conn, cursor, user_id, -amount)  # 扣除押注金额
-        place_bet(conn, cursor, user_id, amount, choice)
-
+        err = place_bet(conn, cursor, user_id, amount, choice)
+        if err is None:
+            update_balance(conn, cursor, user_id, -amount)  # 扣除押注金额
         await update.message.reply_text(f"✅ 你已成功押注 {amount} 金币，方向：{choice}")
         conn.close()
 
     except ValueError:
         await update.message.reply_text("❌ 金额必须是整数！")
 
+@log_command
+async def cancel_bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """取消押注"""
+    user_id = update.effective_user.id
 
-async def check_bets(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    conn, cursor = connect_to_db()
+    if conn is None:
+        await update.message.reply_text("❌ 数据库连接失败，请稍后重试！")
+        return
+
+    delete_bet(conn, cursor, user_id)
+    await update.message.reply_text(f"✅ 你已成功清空 {user_id} 押注内容。")
+    conn.close()
+
+@log_command
+async def show_bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """查询用户押注信息"""
     user_id = update.effective_user.id
 
@@ -109,3 +190,4 @@ async def check_bets(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(f"🎲 你押注了 {user_info['bet_amount']} 金币，方向：{user_info['bet_choice']}")
     conn.close()
+

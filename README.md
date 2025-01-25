@@ -1,21 +1,20 @@
-
 # Telegram 赌博裁判机器人
 
 这是一个基于 Python 和 Telegram Bot API 开发的赌博裁判机器人。它支持在群聊中进行押注管理，用户可以加入游戏并进行押注，游戏结束后会根据押注结果发放奖励。
 
 ## 功能特性
 
-- **用户管理**：
+	- **用户管理**：
   - 使用 `/start` 命令加入游戏。
   - 查询余额：使用 `/balance` 查看当前余额。
   - 进行押注：使用 `/bet <金额> <涨/跌>` 命令进行押注。
   - 查看押注信息：使用 `/mybet` 查看自己当前的押注状态。
   - 结束游戏：管理员可以使用 `/endgame` 命令结束游戏并重置所有用户的押注信息。
 
-- **管理员功能**：
+	- **管理员功能**：
   - 结束游戏：管理员可以通过 `/endgame` 命令结束当前游戏并重置押注。
 
-- **数据库支持**：
+	- **数据库支持**：
   - 本项目使用 MySQL 数据库保存用户信息、余额和押注状态。
   - 自动创建用户表和管理用户数据。
 
@@ -40,10 +39,10 @@ cd telegram-bot
 # 创建虚拟环境
 python -m venv venv
 
-# 激活虚拟环境（Windows）
+	# 激活虚拟环境（Windows）
 venv\Scripts\activate
 
-# 激活虚拟环境（macOS/Linux）
+	# 激活虚拟环境（macOS/Linux）
 source venv/bin/activate
 
 # 安装依赖
@@ -95,6 +94,18 @@ python main.py
 ### `/endgame` 命令
 
 管理员可以使用 `/endgame` 命令结束游戏并重置所有用户的押注信息。
+
+
+
+### **给机器人授予 "Privacy Mode" 关闭权限**（推荐）
+
+1. **打开 BotFather**
+2. 发送命令 `/mybots`
+3. 选择你的机器人
+4. 进入 `Bot Settings` → `Group Privacy`
+5. **将 Privacy Mode 关闭（Turn Off）**
+6. 这样你的机器人就可以监听 **所有的群聊消息**，而不需要 `@机器人`
+7. 
 
 ## 数据库表结构
 
