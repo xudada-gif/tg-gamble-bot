@@ -10,7 +10,6 @@ host = os.getenv("HOST")
 user = os.getenv("USER")
 password = os.getenv("PASSWORD")
 database = os.getenv("DATABASE")
-def_amount = int(os.getenv("DEF_AMOUNT"))
 
 def connect_to_db():
     """连接到数据库"""
@@ -69,10 +68,10 @@ def create_table_if_not_exists(cursor, conn):
     except pymysql.MySQLError as err:
         print(f"❌ 创建表失败：{err}")
 
-def add_user(conn, cursor, user_id: int, name: str):
+def add_user(conn, cursor, user_id: int, name: str, def_money: int):
     """添加新用户（如果不存在）"""
     try:
-        cursor.execute("INSERT IGNORE INTO users (user_id, name, bet_amount) VALUES (%s, %s, %s)", (user_id, name, def_amount))
+        cursor.execute("INSERT IGNORE INTO users (user_id, name, money) VALUES (%s, %s, %s)", (user_id, name, def_money))
         conn.commit()
     except pymysql.MySQLError as err:
         print(f"❌ 添加用户失败：{err}")
@@ -82,6 +81,7 @@ def get_user_info(cursor, user_id: int):
     """查询用户信息"""
     cursor.execute("SELECT name, money, bet_amount, bet_choice FROM users WHERE user_id = %s", user_id)
     result = cursor.fetchone()
+    print(result is None)
     if result:
         return {"name": result["name"], "money": result["money"], "bet_amount": result["bet_amount"], "bet_choice": result["bet_choice"]}
     return None

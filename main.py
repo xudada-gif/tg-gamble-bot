@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from telegram.ext import ApplicationBuilder, CommandHandler,MessageHandler, filters
+from telegram.ext import Updater, ApplicationBuilder, CommandHandler,MessageHandler, filters
 from handlers import *
 from database import connect_to_db, create_table_if_not_exists
 
@@ -23,7 +23,6 @@ if not conn is None:
 app = ApplicationBuilder().token(TOKEN).build()
 
 # 绑定命令处理函数
-
 app.add_handler(MessageHandler(filters.Text(["开始", "/开始", "/start", "start"]), start))
 app.add_handler(MessageHandler(filters.Text(["余额", "/余额"]), show_balance))
 app.add_handler(MessageHandler(filters.Text(["所有余额", "/所有余额"]), show_balances))
@@ -34,14 +33,25 @@ app.add_handler(MessageHandler(filters.Text(["结束", "/结束"]), end_game))
 app.add_handler(MessageHandler(filters.Text(["查看押注", "/查看押注"]), show_bet))
 app.add_handler(MessageHandler(filters.Text(["查看所有押注", "/查看所有押注"]), show_bets))
 
+# app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))  # 处理文字消息
 
-# 监听指令以外的所有文本消息
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.COMMAND, handle_message))
+app.add_handler(MessageHandler(filters.Dice(),callback_method))
+
+# app.add_handler(MessageHandler(filters.PHOTO, handle_message))  # 处理图片
+# app.add_handler(MessageHandler(filters.VOICE, handle_message))  # 处理语音
+# app.add_handler(MessageHandler(filters.VIDEO, handle_message))  # 处理视频
+# app.add_handler(MessageHandler(filters.ANIMATION, handle_message))  # 处理GIF动图
+# app.add_handler(MessageHandler(filters., handle_message))  # 处理文件
+# app.add_handler(MessageHandler(filters.LOCATION, handle_message))  # 处理位置
+# app.add_handler(MessageHandler(filters.CONTACT, handle_message))  # 处理联系人
+# app.add_handler(MessageHandler(filters.STICKER, handle_message))  # 处理表情包
 
 # 运行 Bot
 if __name__ == "__main__":
     print("🤖 Bot 正在运行...")
     try:
         app.run_polling()
+        # 保持机器人运行直到停止
+        app.idle()
     except Exception as e:
         print(f"❌ 发生错误：{e}")

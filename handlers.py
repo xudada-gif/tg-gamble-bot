@@ -1,22 +1,112 @@
 from telegram import Update, KeyboardButton, ReplyKeyboardMarkup
-from telegram.ext import ContextTypes
+from telegram.ext import ContextTypes, CallbackContext
 from database import *
 from utils import admin_required, log_command
+import random
+import asyncio
+def_money = int(os.getenv("DEF_MONEY"))
 
+num = []
+counter = 0
+
+
+async def callback_method(update: Update, context: CallbackContext):
+    global num, counter,en_num
+
+    dice_value = update.message.dice.value  # 获取骰子的点数
+    # chat_type = update.message.chat.type
+    # if chat_type == "private":
+    #     return
+    # 判断骰子点数是否是 1, 2, 3，如果不是则替换为 1、2、3 中的一个点数
+    print(dice_value)
+    if dice_value in [1, 2, 3]:
+        await update.message.reply_text(f"你摇到了点数: {dice_value}")
+        num.append(dice_value)
+        counter += 1
+        if counter > 2:
+            en_num = num[0] + num[1] + num[2]
+            await update.message.reply_text(f"股子三次点数为: {num[0]}+{num[1]}+{num[2]}={en_num}")
+    else:
+        # 删除原始骰子消息
+        while True:
+            message = await update.message.reply_dice(emoji="🎲")  # 发送骰子
+            await asyncio.sleep(0.1)  # 等待 Telegram 服务器返回点数
+            if message.dice.value in [1, 2, 3]:  # 只允许点数 1、2、3
+                num.append(message.dice.value)
+                counter += 1
+                await update.message.reply_text(f"机器人摇到了点数: {message.dice.value}")
+                await update.message.delete()
+                if counter > 2:
+                    en_num = num[0] + num[1] + num[2]
+                    await message.reply_text(f"股子三次点数为: {num[0]}+{num[1]}+{num[2]}={en_num}")
+                break  # 结束循环，保留这个骰子
+            else:
+                await message.delete()  # 删除不符合要求的骰子
+        # await update.message.chat.send_dice()
+        # # await update.message.delete()
+    print(f"counter: {counter},num: {num}")
+    if counter > 2:
+        num = []
+        counter = 0
+
+
+    # else:
+    #     # 如果骰子点数是 1、2、3，直接回复原样
+    #     await update.message.reply_text(f"你摇到了点数: {dice_value}")
 
 # 处理所有普通消息
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """处理所有普通消息"""
-    message = update.message.text
-    # 获取用户名，如果没有名字则使用默认值
-    username = (update.effective_user.first_name or '') + (update.effective_user.last_name or '')
-    chat_type = update.message.chat.type
+    # 检查文本消息
+    if update.message.text:
+        await update.message.reply_text(f"你发送了文字消息：{update.message.text}")
+    # 检查图片消息
+    elif update.message.photo:
+        await update.message.reply_text(f"你发送了图片消息！")
+    # 检查语音消息
+    elif update.message.voice:
+        await update.message.reply_text(f"你发送了语音消息！")
+    # 检查视频消息
+    elif update.message.video:
+        await update.message.reply_text(f"你发送了视频消息！")
+    # 检查GIF动图消息
+    elif update.message.animation:
+        await update.message.reply_text(f"你发送了GIF动图消息！")
+    # 检查文件消息
+    elif update.message.document:
+        await update.message.reply_text(f"你发送了文件消息！")
+    # 检查位置消息
+    elif update.message.location:
+        await update.message.reply_text(f"你发送了位置消息！")
+    # 检查联系人消息
+    elif update.message.contact:
+        await update.message.reply_text(f"你发送了联系人消息！")
+    # 检查表情包消息
+    elif update.message.sticker:
+        await update.message.reply_text(f"你发送了表情包消息！")
+    elif update.message.dice:
 
-    # 根据消息类型进行处理
-    if chat_type == "private":
-        # 如果是私聊，回复消息
-        await update.message.reply_text(f"📩 你在私聊中说：{message}")
+        await update.message.reply_text(f"筛子！")
     else:
+        await update.message.reply_text(f"未能识别此消息类型。")
+
+
+
+    chat_type = update.message.chat.type
+    message = update.message.text
+    print(update.message)
+
+    # 根据消息类型进行处理 群 supergroup
+    if chat_type == "private" and message == "/start":
+        # 如果是私聊，回复消息
+        # 图片路径，可以是本地文件路径或者图片 URL
+        image_path = './code.png'  # 本地图片路径
+        # 你也可以使用 URL，例如：image_url = 'https://example.com/business_card.jpg'
+        # 发送图片和文本
+        await update.message.reply_photo(photo=image_path,
+                                         caption="👋 欢迎！这是我的名片，期待与您的合作！\n\n可以随时联系我，有任何问题都可以询问。")
+
+    if chat_type == "supergroup":
         # 如果是群组消息，删除无效消息 !!!取消将机器人设为管理员
         await update.message.delete()
 
@@ -27,6 +117,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     初始化用户
     """
+
     user_id = update.effective_user.id
     username = update.effective_user.first_name + update.effective_user.last_name
 
@@ -36,19 +127,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     # 1、先查询该用户id在数据库当中是否存在
     res = get_user_info(cursor, user_id)
-    if res is None:
+    if res is not None:
         await update.message.reply_text(f"❌ {username}: 您已经不是新用户！请开始押注")
         conn.close()
         return
 
     # 2、如果不存在则添加，存在提示已经不是新用户
-    add_user(conn, cursor, user_id, username)
+    add_user(conn, cursor, user_id, username,def_money)
     user_info = get_user_info(cursor, user_id)
 
     if user_info:
+        # 图片路径，可以是本地文件路径或者图片 URL
+        image_path = './code.png'  # 本地图片路径
+        # 你也可以使用 URL，例如：image_url = 'https://example.com/business_card.jpg'
+        # 发送图片和文本
+        await update.message.reply_photo(photo=image_path,
+                                         caption="👋 欢迎！这是我的名片，期待与您的合作！\n\n可以随时联系我，有任何问题都可以询问。")
+
         await update.message.reply_text(f"🎮 欢迎 {user_info['name']}，你的初始余额是 {user_info['money']} 金币！")
     else:
-        await update.message.reply_text("❌ 用户初始化失败，请稍后重试！")
+        await update.message.reply_text("❌ 用户初始化失败，请联系群主！")
     conn.close()
 
 
