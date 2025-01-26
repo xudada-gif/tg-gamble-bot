@@ -35,7 +35,7 @@ app.add_handler(MessageHandler(filters.Text(["查看押注", "/查看押注"]), 
 app.add_handler(MessageHandler(filters.Text(["查看所有押注", "/查看所有押注"]), show_bets))
 
 
-# 监听所有文本消息
+# 监听指令以外的所有文本消息
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
 # 运行 Bot

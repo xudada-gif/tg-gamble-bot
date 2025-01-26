@@ -4,22 +4,29 @@ from database import *
 from utils import admin_required, log_command
 
 
+# 处理所有普通消息
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """处理所有普通消息"""
     message = update.message.text
-    username = update.effective_user.first_name + update.effective_user.last_name
+    # 获取用户名，如果没有名字则使用默认值
+    username = (update.effective_user.first_name or '') + (update.effective_user.last_name or '')
     chat_type = update.message.chat.type
 
+    # 根据消息类型进行处理
     if chat_type == "private":
+        # 如果是私聊，回复消息
         await update.message.reply_text(f"📩 你在私聊中说：{message}")
     else:
-        await update.message.reply_text(f"📩 {username} 在群聊中说：{message}")
+        # 如果是群组消息，删除无效消息
+        await update.message.delete()
 
 
 # @admin_required
 @log_command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """初始化用户"""
+    """
+    初始化用户
+    """
     user_id = update.effective_user.id
     username = update.effective_user.first_name + update.effective_user.last_name
 
@@ -27,7 +34,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if conn is None:
         await update.message.reply_text("❌ 数据库连接失败，请稍后重试！")
         return
+    # 1、先查询该用户id在数据库当中是否存在
+    res = get_user_info(cursor, user_id)
+    if res is None:
+        await update.message.reply_text(f"❌ {username}: 您已经不是新用户！请开始押注")
+        conn.close()
+        return
 
+    # 2、如果不存在则添加，存在提示已经不是新用户
     add_user(conn, cursor, user_id, username)
     user_info = get_user_info(cursor, user_id)
 
