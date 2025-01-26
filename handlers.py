@@ -17,7 +17,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 如果是私聊，回复消息
         await update.message.reply_text(f"📩 你在私聊中说：{message}")
     else:
-        # 如果是群组消息，删除无效消息
+        # 如果是群组消息，删除无效消息 !!!取消将机器人设为管理员
         await update.message.delete()
 
 

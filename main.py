@@ -36,7 +36,7 @@ app.add_handler(MessageHandler(filters.Text(["查看所有押注", "/查看所�
 
 
 # 监听指令以外的所有文本消息
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.COMMAND, handle_message))
 
 # 运行 Bot
 if __name__ == "__main__":
