@@ -101,12 +101,25 @@ def delete_bets_db(conn, cursor):
 def get_user_info_db(cursor, user_id: int):
     """查询用户信息"""
     cursor.execute("SELECT * FROM users WHERE user_id = %s", user_id)
-    result = cursor.fetchone()
+    result = cursor.fetchall()
     return result
 
 
 def get_users_info_db(cursor):
-    """查询用户信息"""
+    """查询用户所有信息"""
     cursor.execute("SELECT * FROM users")
-    result = cursor.fetchone()
+    result = cursor.fetchall()
     return result
+
+def get_users_bet_info_db(cursor):
+    """查询用户所有押注信息"""
+    cursor.execute("SELECT user_id, name, bet_amount, bet_choice FROM users")
+    result = cursor.fetchall()
+    return result
+
+def get_users_moneys_info_db(cursor):
+    """查询用户所余额信息"""
+    cursor.execute("SELECT user_id, name, money FROM users")
+    result = cursor.fetchall()
+    return result
+
