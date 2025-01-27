@@ -18,6 +18,7 @@ async def check_admin(update: Update, context: CallbackContext):
     # **1️⃣ 检查是否在群聊**
     if chat.type == "private":
         await update.message.reply_text("❌ 该命令只能在群聊中使用！")
+        await update.message.delete()
         return False
 
     # **2️⃣ 获取管理员列表**

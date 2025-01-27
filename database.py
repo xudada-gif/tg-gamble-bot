@@ -34,7 +34,7 @@ def connect_to_db():
         print(f"❌ 发生未知错误：{e}")
         return None, None
 
-def create_table_if_not_exists(cursor, conn):
+def create_table_if_not_exists_db(cursor, conn):
     """
     检查用户表是否存在，不存在则创建
     """
@@ -48,7 +48,7 @@ def create_table_if_not_exists(cursor, conn):
                 top_up_num INT DEFAULT 0,   # top_up_num 列为 INT 类型，默认值为 0，用于记录用户充值次数
                 sell_num INT DEFAULT 0,     # sell_num 列为 INT 类型，默认值为 0，用于记录用户出售次数
                 bet_amount INT DEFAULT 0,   # bet_amount 列为 INT 类型，默认值为 0，用于记录用户的投注金额
-                bet_choice ENUM('涨', '跌') DEFAULT NULL,  # bet_choice 列为 ENUM 类型，取值范围是 '涨' 或 '跌'，默认值为 NULL（表示用户未选择）
+                bet_choice ENUM('大', '小') DEFAULT NULL,  # bet_choice 列为 ENUM 类型，取值范围是 '涨' 或 '跌'，默认值为 NULL（表示用户未选择）
                 PRIMARY KEY (user_id)  # 定义一个主键
             );
         ''')
@@ -68,48 +68,45 @@ def create_table_if_not_exists(cursor, conn):
     except pymysql.MySQLError as err:
         print(f"❌ 创建表失败：{err}")
 
-def add_user(conn, cursor, user_id: int, name: str, def_money: int):
+def add_user_db(conn, cursor, user_id: int, name: str, def_money: int):
     """添加新用户（如果不存在）"""
-    try:
-        cursor.execute("INSERT IGNORE INTO users (user_id, name, money) VALUES (%s, %s, %s)", (user_id, name, def_money))
-        conn.commit()
-    except pymysql.MySQLError as err:
-        print(f"❌ 添加用户失败：{err}")
+    cursor.execute("INSERT IGNORE INTO users (user_id, name, money) VALUES (%s, %s, %s)", (user_id, name, def_money))
+    conn.commit()
 
 
-def get_user_info(cursor, user_id: int):
-    """查询用户信息"""
-    cursor.execute("SELECT name, money, bet_amount, bet_choice FROM users WHERE user_id = %s", user_id)
-    result = cursor.fetchone()
-    print(result is None)
-    if result:
-        return {"name": result["name"], "money": result["money"], "bet_amount": result["bet_amount"], "bet_choice": result["bet_choice"]}
-    return None
-
-
-def update_balance(conn, cursor, user_id: int, amount: int):
+def update_balance_db(conn, cursor, user_id: int, amount: int):
     """更新用户余额"""
     cursor.execute("UPDATE users SET money = money + %s WHERE user_id = %s", (amount, user_id))
     conn.commit()
 
 
-def place_bet(conn, cursor, user_id: int, amount: int, choice: str):
+def place_bet_db(conn, cursor, user_id: int, amount: int, choice: str):
     """用户押注"""
-    print(f"UPDATE users SET bet_amount = {amount}, bet_choice = {choice} WHERE user_id = {user_id}")
-    try:
-        cursor.execute("UPDATE users SET bet_amount = %s, bet_choice = %s WHERE user_id = %s", (amount, choice, user_id))
-        conn.commit()
-    except pymysql.MySQLError as err:
-        return err
+    cursor.execute("UPDATE users SET bet_amount = %s, bet_choice = %s WHERE user_id = %s", (amount, choice, user_id))
+    conn.commit()
 
 
-def delete_bet(conn, cursor, user_id: int):
+def delete_bet_db(conn, cursor, user_id: int):
     """重置制定用户的押注信息"""
     cursor.execute("UPDATE users SET bet_amount = 0, bet_choice = NULL WHERE user_id = %s", user_id)
     conn.commit()
 
 
-def delete_bets(conn, cursor):
+def delete_bets_db(conn, cursor):
     """重置所有用户的押注信息"""
     cursor.execute("UPDATE users SET bet_amount = 0, bet_choice = NULL")
     conn.commit()
+
+
+def get_user_info_db(cursor, user_id: int):
+    """查询用户信息"""
+    cursor.execute("SELECT * FROM users WHERE user_id = %s", user_id)
+    result = cursor.fetchone()
+    return result
+
+
+def get_users_info_db(cursor):
+    """查询用户信息"""
+    cursor.execute("SELECT * FROM users")
+    result = cursor.fetchone()
+    return result
