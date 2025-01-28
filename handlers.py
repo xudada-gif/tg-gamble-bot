@@ -112,7 +112,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     开始游戏
     """
     user_id = update.effective_user.id
-    username = update.effective_user.first_name + update.effective_user.last_name
+    username = " ".join(filter(None, [update.effective_user.first_name, update.effective_user.last_name]))
 
     conn, cursor = connect_to_db()
     if conn is None:

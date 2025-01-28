@@ -19,8 +19,6 @@ async def start_game(update: Update, context: CallbackContext):
         await update.message.reply_text("游戏已经在进行中！")
         return
     context.bot_data["running"] = True
-
-    await update.message.reply_text(f"游戏开始！\U0001F3B2 倒计时 {context.bot_data['game_num']} 秒一轮！")
     await start_round(update, context)
 
 
@@ -34,6 +32,7 @@ async def end_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     3、押注对的用户把押注翻倍增加到余额
     4、清空所有的用户押注
     """
+    context.bot_data["running"] = False
     username = update.effective_user.first_name + update.effective_user.last_name
     conn, cursor = connect_to_db()
     if conn is None:

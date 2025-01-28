@@ -74,21 +74,20 @@ def add_user_db(conn, cursor, user_id: int, name: str, def_money: int):
     conn.commit()
 
 
-def update_balance_db(conn, cursor, user_id: int, amount: int):
+def update_balance_db(cursor, user_ids: list, amounts: list):
     """更新用户余额"""
-    cursor.execute("UPDATE users SET money = money + %s WHERE user_id = %s", (amount, user_id))
-    conn.commit()
+    for user_id, amount in zip(user_ids, amounts):
+        cursor.execute("UPDATE users SET money = money + %s WHERE user_id = %s", (amount, user_id))
+
+
+def delete_bet_db(cursor, user_ids: list):
+    """重置指定用户的押注信息"""
+    cursor.execute("UPDATE users SET bet_amount = 0, bet_choice = NULL WHERE user_id IN (%s)" % ",".join(map(str, user_ids)))
 
 
 def place_bet_db(conn, cursor, user_id: int, amount: int, choice: str):
     """用户押注"""
     cursor.execute("UPDATE users SET bet_amount = %s, bet_choice = %s WHERE user_id = %s", (amount, choice, user_id))
-    conn.commit()
-
-
-def delete_bet_db(conn, cursor, user_id: int):
-    """重置制定用户的押注信息"""
-    cursor.execute("UPDATE users SET bet_amount = 0, bet_choice = NULL WHERE user_id = %s", user_id)
     conn.commit()
 
 
