@@ -38,7 +38,8 @@ async def get_animation_file_id(context: CallbackContext, chat_id: int, key: str
             )
             if msg and msg.animation:
                 file_id = msg.animation.file_id
-                context.bot_data[key] = file_id
+                context.bot_data[key] = file_id  # 确保存储 file_id
+                logging.info(f"新动画已发送并存储 file_id: {file_id}")
             else:
                 logging.error(f"发送动画失败，msg.animation 为 None: {msg}")
                 return None
@@ -60,6 +61,7 @@ async def countdown_task(update: Update, context: CallbackContext, chat_id: int,
     game_time = context.bot_data["game_num"]
     await asyncio.sleep(game_time)
     context.bot_data["running"] = False
+
     gif_stop_game = "./stop_game.gif"
     conn, cursor = connect_to_db()
     users_info = get_users_info_db(cursor)
@@ -92,17 +94,19 @@ async def countdown_task(update: Update, context: CallbackContext, chat_id: int,
 
 25秒内掷出3颗骰子，超时机器补发，无争议
     """
-
-    stop_file_id = await get_animation_file_id(context, chat_id, "stop_game_file_id", gif_stop_game, caption_stop_game)
-
-    await context.bot.send_animation(
-        chat_id=chat_id,
-        animation=stop_file_id,
-        caption=caption_stop_game,
-        read_timeout=10,
-        parse_mode='HTML'
-    )
-
+    # 直接使用缓存的 file_id
+    stop_file_id = context.bot_data.get("stop_game_file_id")
+    if not stop_file_id:
+        await get_animation_file_id(
+            context, chat_id, "stop_game_file_id", gif_stop_game,caption_stop_game)
+    else:
+        await context.bot.send_animation(
+            chat_id=chat_id,
+            animation=stop_file_id,
+            caption=caption_stop_game,
+            read_timeout=10,
+            parse_mode='HTML'
+        )
     if re_game:
         await start_round(update, context)
         return
@@ -132,7 +136,7 @@ async def start_round(update: Update, context: CallbackContext):
     caption_start_game = f"""
         <b>期号</b>: {issue_num}
 
-发包手ID: 小马 (5557109895) 庄
+发包手ID: user (id) 庄
 
 🧧底注: 1u 余额(135904.54u)
 
@@ -143,18 +147,14 @@ async def start_round(update: Update, context: CallbackContext):
 高倍: bz1 10 bz1 10 或 豹子1 10 豹子2 10
 
 特码: 定位胆位置+数字，例如: 定位胆4 10, dwd4 10, 4y 10
-
-👉<a href="https://t.me/fuvipbot?start=gamequery">输赢流水查询</a>
     """
-    start_file_id = ""
-    # 先检查 start_file_id 是否已经存在
+    # 获取或缓存 file_id
+    start_file_id = context.bot_data.get("start_game_file_id")
     if not start_file_id:
-        start_file_id = await get_animation_file_id(
+        await get_animation_file_id(
             context, chat_id, "start_game_file_id", gif_start_game, caption_start_game
         )
-
-    # 如果 start_file_id 存在，发送动画
-    if start_file_id:
+    else:
         await context.bot.send_animation(
             chat_id=chat_id,
             animation=start_file_id,
