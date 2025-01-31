@@ -12,7 +12,10 @@ password = os.getenv("PASSWORD")
 database = os.getenv("DATABASE")
 
 def connect_to_db():
-    """连接到数据库"""
+    """
+    连接到数据库
+    :return:conn, cursor
+    """
     try:
         print(f"🔌 正在连接到数据库: {host}")
         # 使用 pymysql 连接数据库

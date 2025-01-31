@@ -28,7 +28,7 @@ app.add_handler(MessageHandler(filters.Text(["所有余额", "/所有余额"]), 
 app.add_handler(MessageHandler(filters.Text(["所有押注", "/所有押注"]), show_bets))
 
 # 普通用户命令
-app.add_handler(MessageHandler(filters.Dice(), callback_method))
+# app.add_handler(MessageHandler(filters.Dice(), callback_method))
 app.add_handler(MessageHandler(filters.Text(["开始", "/开始", "/start", "start"]), start))
 app.add_handler(MessageHandler(filters.Text(["余额", "/余额", "/money", "money"]), show_money))
 app.add_handler(MessageHandler(filters.Text(["取消", "/取消", "/cancel", "cancel"]), cancel_bet))
@@ -39,7 +39,7 @@ app.add_handler(MessageHandler(filters.Text(["查看押注", "/查看押注", "/
 
 # app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))  # 处理文字消息
 
-app.add_handler(MessageHandler(filters.Dice(),callback_method))
+# app.add_handler(MessageHandler(filters.Dice(),callback_method))
 
 # app.add_handler(MessageHandler(filters.PHOTO, handle_message))  # 处理图片
 # app.add_handler(MessageHandler(filters.VOICE, handle_message))  # 处理语音

@@ -9,12 +9,13 @@ import os
 @log_command
 @admin_required
 async def start_game(update: Update, context: CallbackContext):
-    context.bot_data["game_num"] = int(os.getenv("GAME_NUM"))
-    context.bot_data["running"] = False
-    context.bot_data["highest_bet_userid"] = []
-    context.bot_data["bet_users"] = {}
-    context.bot_data["countdown_task"] = None
-
+    context.bot_data["game_num"] = int(os.getenv("GAME_NUM"))   #一轮游戏多少秒
+    context.bot_data["running"] = False     #游戏是否在进行
+    context.bot_data["highest_bet_userid"] = [] #最高押注用户id
+    context.bot_data["bet_users"] = {}   #用户押注列表
+    context.bot_data["countdown_task"] = None      #创建任务
+    context.bot_data["total_point"] = []
+    context.bot_data["total_points"]= []    #筛子点数列表
     if context.bot_data["running"]:
         await update.message.reply_text("游戏已经在进行中！")
         return
