@@ -59,7 +59,7 @@ async def countdown_task(update: Update, context: CallbackContext, chat_id: int,
     """ 倒计时结束后处理下注和投骰子 """
     game_time = context.bot_data["game_num"]
     await asyncio.sleep(game_time)
-
+    context.bot_data["running"] = False
     gif_stop_game = "./stop_game.gif"
     conn, cursor = connect_to_db()
     users_info = get_users_info_db(cursor)
@@ -111,17 +111,17 @@ async def countdown_task(update: Update, context: CallbackContext, chat_id: int,
     context.bot_data["total_point"] = []
     if len(max_users) == 1:
         context.bot_data["highest_bet_userid"] = max_users[0]['user_id']
-        app = context.application
-        dice_handler = MessageHandler(filters.Dice(), handle_dice_roll)
-        app.add_handler(dice_handler)
     else:
         await bot_dice_roll(update, context)
 
 
 async def start_round(update: Update, context: CallbackContext):
     """ 开始新一轮游戏 """
-    if not context.bot_data.get("running", False):
-        return
+    context.bot_data["running"] = True
+
+    app = context.application
+    dice_handler = MessageHandler(filters.Dice(), handle_dice_roll)
+    app.add_handler(dice_handler)
 
     chat_id = update.effective_chat.id
     context.bot_data["bet_users"] = {}
@@ -188,8 +188,12 @@ async def handle_dice_roll(update: Update, context: CallbackContext):
     """ 处理用户投骰子 """
     chat_id = update.effective_chat.id
     logging.info(f"开始投骰子 | Chat ID: {chat_id}")
-
+    # 如果投掷筛子
+    if context.bot_data.get("running", False):
+        return await update.message.delete()
     if update.message.from_user.id != context.bot_data["highest_bet_userid"]:
+        return await update.message.delete()
+    if len(context.bot_data["total_point"]) == 3:
         return await update.message.delete()
 
     dice_value = update.message.dice.value
@@ -275,4 +279,5 @@ async def process_dice_result(update: Update, context: CallbackContext, chat_id:
         logging.error(f"数据库更新失败: {e}")
 
     # 开启新一轮
+    await asyncio.sleep(2)
     await start_round(update, context)

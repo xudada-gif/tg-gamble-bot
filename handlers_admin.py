@@ -19,7 +19,7 @@ async def start_game(update: Update, context: CallbackContext):
     if context.bot_data["running"]:
         await update.message.reply_text("游戏已经在进行中！")
         return
-    context.bot_data["running"] = True
+
     await start_round(update, context)
 
 
