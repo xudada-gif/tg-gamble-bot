@@ -1,10 +1,11 @@
 import asyncio
 import base64
+import json
 from io import BytesIO
 from telegram.ext import CallbackContext,MessageHandler, filters
 from telegram import Update
 from game_logic_func import issue, safe_send_message, safe_send_dice, dice_photo
-from database import connect_to_db, get_users_info_db, update_balance_db
+from database import connect_to_db, get_users_info_db, update_balance_db,get_users_bet_info_db
 import logging
 import os
 
@@ -56,6 +57,69 @@ def get_filtered_users(users_info):
     return filtered_users, max_users
 
 
+async def format_bet_data(users_bet):
+    output = []
+    for user_bet in users_bet:
+        user_id = user_bet['user_id']
+        name = user_bet['name']
+        bets = json.loads(user_bet['bet'])  # 解析 bet 字段的 JSON 字符串
+        for bet in bets:
+            bet_type = bet['type']
+            money = bet['money']
+            if bet_type == "大小":
+                choice = bet['choice']
+                choice = '大' if choice in ['d', 'da'] else '小' if choice in ['x', 'xiao'] else choice
+                output.append(f"{name}  {user_id} {choice} {money}u")
+
+            elif bet_type == "大小单双":
+                choice = bet['choice']
+                choice_map = {"dd": "大单", "ds": "大双", "xs": "小双", "xd": "小单"}
+                choice = choice_map.get(choice, choice)
+                output.append(f"{name}  {user_id} {choice} {money}u")
+
+            elif bet_type == "豹子":
+                choice = bet.get('choice', '')  # 有 choice 就取值，否则为空
+                output.append(f"{name}  {user_id} 豹子{choice} {money}u")
+
+            elif bet_type == "和值":
+                choice = bet['choice']
+                output.append(f"{name}  {user_id} 和值{choice} {money}u")
+
+            elif bet_type == "指定对子":
+                choice = bet['choice']
+                output.append(f"{name}  {user_id} 指定对子{choice} {money}u")
+
+            elif bet_type == "顺子":
+                output.append(f"{name}  {user_id} 顺子 {money}u")
+
+            elif "定位胆" in bet_type:  # 处理 '定位胆' 和 '定位胆y'
+                position = bet['position']
+                dice_value = bet['dice_value']
+                output.append(f"{name}  {user_id} 定位胆{position} {dice_value} {money}u")
+    return "\n".join(output)
+
+
+# 计算押注金额最多的用户
+async def get_top_bettor(data):
+    bet_sums = {}  # 存储每个用户的总押注金额
+    for user in data:
+        user_id = user['user_id']
+        name = user['name']
+        bets = json.loads(user['bet'])  # 解析 JSON 结构
+        # 计算该用户的总押注金额
+        total_money = 0
+        for bet in bets:
+            total_money += int(bet['money'])
+        bet_sums[user_id] = {"name": name, "user_id":user_id, "total_money": total_money}
+    # 找到押注金额最多的用户
+    max_money = max(user["total_money"] for user in bet_sums.values())
+
+    # 筛选出所有押注金额等于最高金额的用户
+    top_bettors = [user for user in bet_sums.values() if user["total_money"] == max_money]
+
+    return top_bettors
+
+
 async def countdown_task(update: Update, context: CallbackContext, chat_id: int, issue_num: int):
     """ 倒计时结束后处理下注和投骰子 """
     game_time = context.bot_data["game_num"]
@@ -64,35 +128,30 @@ async def countdown_task(update: Update, context: CallbackContext, chat_id: int,
 
     gif_stop_game = "./stop_game.gif"
     conn, cursor = connect_to_db()
-    users_info = get_users_info_db(cursor)
-    context.bot_data["users_info"] = users_info
-
-    filtered_users, max_users = get_filtered_users(users_info)
-
-    user_bets = "\n".join(
-        f"{user['name']} {user['user_id']} {user['bet_choice']} {user['bet_amount']}u"
-        for user in filtered_users
-    ) if filtered_users else "暂无玩家下注"
+    users_bet = get_users_bet_info_db(cursor)
+    # 获取本轮用户下注信息
+    output = await format_bet_data(users_bet)
+    # 获取押注金额最多的用户
+    max_users = await get_top_bettor(users_bet)
 
     re_game = False
     if len(max_users) == 1:
-        max_user_name = max_users[0]['name']
-        max_user_amount = max_users[0]['bet_amount']
-        roll_prompt = f"请掷骰子玩家：@{max_user_name}(总投注 {max_user_amount}u)"
+        roll_prompt = f"请掷骰子玩家：@{max_users[0]['name']} {max_users[0]['user_id']} (总投注 {max_users[0]['total_money']}u)"
     elif max_users:
         roll_prompt = "存在多个最大下注玩家，由机器人下注"
     else:
         roll_prompt = "无玩家下注，跳过掷骰子阶段"
         re_game = True
 
+
     caption_stop_game = f"""
      ----{issue_num}期下注玩家-----
-{user_bets}
+{output}
 
 👉轻触【<code>🎲</code>】复制投掷。
 {roll_prompt}
 
-25秒内掷出3颗骰子，超时机器补发，无争议
+<b>25秒内掷出3颗骰子，超时机器补发，无争议</b>
     """
     # 直接使用缓存的 file_id
     stop_file_id = context.bot_data.get("stop_game_file_id")
@@ -104,7 +163,7 @@ async def countdown_task(update: Update, context: CallbackContext, chat_id: int,
             chat_id=chat_id,
             animation=stop_file_id,
             caption=caption_stop_game,
-            read_timeout=10,
+            read_timeout=20,
             parse_mode='HTML'
         )
     if re_game:
@@ -159,7 +218,7 @@ async def start_round(update: Update, context: CallbackContext):
             chat_id=chat_id,
             animation=start_file_id,
             caption=caption_start_game,
-            read_timeout=10,
+            read_timeout=20,
             parse_mode='HTML'
         )
 

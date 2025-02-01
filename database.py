@@ -1,3 +1,5 @@
+import json
+
 import pymysql
 import os
 from dotenv import load_dotenv
@@ -7,7 +9,7 @@ load_dotenv()
 
 # 从环境变量中获取数据库连接信息
 host = os.getenv("HOST")
-user = os.getenv("USER")
+db_user = os.getenv("USER")
 password = os.getenv("PASSWORD")
 database = os.getenv("DATABASE")
 
@@ -21,7 +23,7 @@ def connect_to_db():
         # 使用 pymysql 连接数据库
         conn = pymysql.connect(
             host=host,
-            user=user,
+            user=db_user,
             password=password,
             database=database,
             charset='utf8mb4',  # 推荐使用 utf8mb4 字符集
@@ -50,8 +52,7 @@ def create_table_if_not_exists_db(cursor, conn):
                 money INT DEFAULT 0,    # money 列为 INT 类型，默认值为 0，用于记录用户的金额
                 top_up_num INT DEFAULT 0,   # top_up_num 列为 INT 类型，默认值为 0，用于记录用户充值次数
                 sell_num INT DEFAULT 0,     # sell_num 列为 INT 类型，默认值为 0，用于记录用户出售次数
-                bet_amount INT DEFAULT 0,   # bet_amount 列为 INT 类型，默认值为 0，用于记录用户的投注金额
-                bet_choice ENUM('大', '小') DEFAULT NULL,  # bet_choice 列为 ENUM 类型，取值范围是 '涨' 或 '跌'，默认值为 NULL（表示用户未选择）
+                bet JSON NULL,  # 押注数据（列表格式，JSON 类型）
                 PRIMARY KEY (user_id)  # 定义一个主键
             );
         ''')
@@ -83,20 +84,23 @@ def update_balance_db(cursor, user_ids: list, amounts: list):
         cursor.execute("UPDATE users SET money = money + %s WHERE user_id = %s", (amount, user_id))
 
 
+def place_bet_db(conn, cursor, user_id: int, bet: dict):
+    """用户押注"""
+    bets = get_user_bet_info_db(cursor, user_id)
+    bet_list = json.loads(bets)  # 解析 JSON
+    bet_list = list(bet_list)
+    bet_list.append(bet)
+    cursor.execute("UPDATE users SET bet = %s WHERE user_id = %s", (json.dumps(bet_list), user_id))
+    conn.commit()
+
 def delete_bet_db(cursor, user_ids: list):
     """重置指定用户的押注信息"""
-    cursor.execute("UPDATE users SET bet_amount = 0, bet_choice = NULL WHERE user_id IN (%s)" % ",".join(map(str, user_ids)))
-
-
-def place_bet_db(conn, cursor, user_id: int, amount: int, choice: str):
-    """用户押注"""
-    cursor.execute("UPDATE users SET bet_amount = %s, bet_choice = %s WHERE user_id = %s", (amount, choice, user_id))
-    conn.commit()
+    cursor.execute("UPDATE users SET bet = '[]' WHERE user_id IN (%s)" % ",".join(map(str, user_ids)))
 
 
 def delete_bets_db(conn, cursor):
     """重置所有用户的押注信息"""
-    cursor.execute("UPDATE users SET bet_amount = 0, bet_choice = NULL")
+    cursor.execute("UPDATE users SET bet = '[]' WHERE user_id = *")
     conn.commit()
 
 
@@ -113,9 +117,17 @@ def get_users_info_db(cursor):
     result = cursor.fetchall()
     return result
 
+def get_user_bet_info_db(cursor, user_id: int):
+    """查询指定用户押注信息"""
+    cursor.execute("SELECT bet FROM users WHERE user_id = %s", (user_id,))
+    result = cursor.fetchone()
+    if not result['bet']:
+        result['bet'] = '[]'
+    return result['bet']
+
 def get_users_bet_info_db(cursor):
     """查询用户所有押注信息"""
-    cursor.execute("SELECT user_id, name, bet_amount, bet_choice FROM users")
+    cursor.execute("SELECT user_id, name, bet FROM users")
     result = cursor.fetchall()
     return result
 
