@@ -30,6 +30,7 @@ ODDS = {
     "顺子": 30
 }
 
+
 # 发送消息
 async def safe_send_message(context, chat_id, text, **kwargs):
     """ 安全发送消息，支持指数退避 """
@@ -51,6 +52,7 @@ async def safe_send_message(context, chat_id, text, **kwargs):
     logging.error("Failed to send message after multiple retries")
     return None  # 失败后返回 None
 
+
 # 投掷骰子
 async def safe_send_dice(context, chat_id, emoji="🎲"):
     """ 安全投掷骰子，失败最多重试 3 次 """
@@ -67,6 +69,7 @@ async def safe_send_dice(context, chat_id, emoji="🎲"):
     logging.error("投骰子失败，放弃本轮游戏")
     return None  # 失败后返回 None，避免死循环
 
+
 # 检测文件编码
 async def detect_encoding(file_path):
     """异步检测文件编码"""
@@ -76,6 +79,7 @@ async def detect_encoding(file_path):
 
     encoding = result.get("encoding", "utf-8")  # 失败时默认 utf-8
     return encoding
+
 
 # 获取旗号
 async def issue():
@@ -109,6 +113,7 @@ async def issue():
             await f.write(str(current_number + 1))  # 递增编号
 
     return new_code
+
 
 # 生成骰子点数表格
 async def dice_photo(context: CallbackContext):
@@ -182,6 +187,7 @@ async def dice_photo(context: CallbackContext):
 
     return img_base64, count_big, count_small
 
+
 # 计算押注金额最多的用户
 async def get_top_bettor(data):
     bet_sums = {}  # 存储每个用户的总押注金额
@@ -193,7 +199,7 @@ async def get_top_bettor(data):
         total_money = 0
         for bet in bets:
             total_money += int(bet['money'])
-        bet_sums[user_id] = {"name": name, "user_id":user_id, "total_money": total_money}
+        bet_sums[user_id] = {"name": name, "user_id": user_id, "total_money": total_money}
     # 找到押注金额最多的用户
     max_money = max(user["total_money"] for user in bet_sums.values())
 
@@ -202,6 +208,7 @@ async def get_top_bettor(data):
 
     return top_bettors
 
+
 # 筛选下注用户，并获取最大下注金额和下注最多的用户
 def get_filtered_users(users_info):
     """ 筛选下注用户，并获取最大下注金额和下注最多的用户 """
@@ -209,6 +216,7 @@ def get_filtered_users(users_info):
     max_bet = max((user['bet_amount'] for user in filtered_users), default=0)
     max_users = [user for user in filtered_users if user['bet_amount'] == max_bet]
     return filtered_users, max_users
+
 
 # 获取 GIF 动画 file_id，如果没有缓存则发送新动画并存储 file_id
 async def get_animation_file_id(context: CallbackContext, chat_id: int, key: str, file_path: str, caption: str):
@@ -240,6 +248,7 @@ async def get_animation_file_id(context: CallbackContext, chat_id: int, key: str
             logging.error(f"发送动画时发生错误: {e}")
             return None
     return file_id
+
 
 # 格式化用户下注内容
 async def format_bet_data(users_bet):
@@ -283,9 +292,11 @@ async def format_bet_data(users_bet):
                 output.append(f"{name}  {user_id} 定位胆{position} {dice_value} {money}u")
     return "\n".join(output)
 
+
 # 处理下注逻辑的类
 class BetHandler:
     """处理下注逻辑的类"""
+
     @staticmethod
     async def handle_daxiao(bet, sum_dice):
         """处理大小下注"""
@@ -314,9 +325,9 @@ class BetHandler:
             choice = '小单'
         bet_details = f"押注：{choice}，金额：{bet['money']}"
         if (sum_dice > 10 and sum_dice % 2 == 1 and choice == '大单') or \
-           (sum_dice > 10 and sum_dice % 2 == 0 and choice == '大双') or \
-           (sum_dice <= 10 and sum_dice % 2 == 1 and choice == '小单') or \
-           (sum_dice <= 10 and sum_dice % 2 == 0 and choice == '小双'):
+                (sum_dice > 10 and sum_dice % 2 == 0 and choice == '大双') or \
+                (sum_dice <= 10 and sum_dice % 2 == 1 and choice == '小单') or \
+                (sum_dice <= 10 and sum_dice % 2 == 0 and choice == '小双'):
             return f"✅ {bet_details}，赢了：{bet['money'] * ODDS['大小单双']}!\n", True
         else:
             return f"❌ {bet_details}，输了：{bet['money']}!\n", False

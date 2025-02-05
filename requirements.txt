@@ -6,3 +6,4 @@ numpy~=2.2.2
 matplotlib~=3.10.0
 aiofiles~=24.1.0
 chardet~=5.2.0
+pypinyin~=0.53.0

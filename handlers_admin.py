@@ -2,6 +2,7 @@ from telegram import Update
 from game_logic import  start_round
 from utils import admin_required, log_command
 from telegram.ext import ContextTypes, CallbackContext
+from game_logic_func import format_bet_data
 from database import connect_to_db, get_users_bet_info_db, get_users_moneys_info_db
 import os
 
@@ -26,13 +27,6 @@ async def start_game(update: Update, context: CallbackContext):
 @log_command
 @admin_required
 async def end_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    结束游戏
-    1、机器摇骰子
-    2、获取所有押注的用户获取值进行判断
-    3、押注对的用户把押注翻倍增加到余额
-    4、清空所有的用户押注
-    """
     context.bot_data["running"] = False
     username = update.effective_user.first_name + update.effective_user.last_name
     conn, cursor = connect_to_db()
@@ -54,18 +48,11 @@ async def show_bets(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     users_info = get_users_bet_info_db(cursor)
-    sorted_data = sorted(users_info, key=lambda x: x['bet_amount'], reverse=True)
-    # 拼接成一段内容
-    output = ""
-    for user in sorted_data:
-        if user['bet_amount'] == 0:
-            break
-        output += f"{user['name']}|{user['user_id']}|{user['bet_amount']}|{user['bet_choice']}\n"
-    # 输出完整内容
-    if output == "":
+    if not users_info:
         await update.message.reply_text(f"还没人押注！")
         return
-    await update.message.reply_text(f"名字——id——押注金额——押注方向\n{output.strip()}")
+    output = await format_bet_data(users_info)
+    await update.message.reply_text(output)
 
 
 @log_command

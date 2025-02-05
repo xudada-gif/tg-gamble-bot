@@ -94,20 +94,20 @@ def place_bet_db(conn, cursor, user_id: int, bet: dict):
     conn.commit()
 
 
-def delete_bet_db(cursor, user_ids: list):
+def delete_bet_db(conn, cursor, user_ids: list):
     """重置指定用户的押注信息"""
     if not user_ids:
         return  # 避免 SQL 语法错误
     placeholders = ",".join(["%s"] * len(user_ids))  # 根据 user_ids 的数量生成占位符
     sql = f"UPDATE users SET bet = JSON_ARRAY() WHERE user_id IN ({placeholders})"
     cursor.execute(sql, user_ids)
+    conn.commit()
 
 
 def delete_bets_db(conn, cursor):
     """重置所有用户的押注信息（JSON 类型）"""
     cursor.execute("UPDATE users SET bet = JSON_ARRAY()")
     conn.commit()
-
 
 
 def get_user_info_db(cursor, user_id: int):
@@ -123,6 +123,7 @@ def get_users_info_db(cursor):
     result = cursor.fetchall()
     return result
 
+
 def get_user_bet_info_db(cursor, user_id: int):
     """查询指定用户押注信息"""
     cursor.execute("SELECT bet FROM users WHERE user_id = %s", (user_id,))
@@ -130,6 +131,7 @@ def get_user_bet_info_db(cursor, user_id: int):
     if not result['bet']:
         result['bet'] = '[]'
     return result['bet']
+
 
 def get_users_bet_info_db(cursor):
     """查询用户所有押注信息"""

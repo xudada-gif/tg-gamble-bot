@@ -2,6 +2,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler,MessageHandler, filt
 from handlers import *
 from database import connect_to_db, create_table_if_not_exists_db
 from handlers_admin import start_game, end_game, show_bets, show_moneys
+from game_logic import handle_dice_roll
 
 # 加载环境变量
 load_dotenv()
@@ -32,7 +33,7 @@ app.add_handler(MessageHandler(filters.Text(["开始", "/开始", "/start", "sta
 app.add_handler(MessageHandler(filters.Text(["余额", "/余额", "/money", "money"]), show_money))
 app.add_handler(MessageHandler(filters.Text(["取消", "/取消", "/cancel", "cancel"]), cancel_bet))
 app.add_handler(MessageHandler(filters.Text(["查看押注", "/查看押注", "/bet_show", "bet_show"]), show_bet))
-app.add_handler(MessageHandler(filters.Text(["bet", "/bet"]), bet))
+app.add_handler(MessageHandler(filters.Dice(), handle_dice_roll))  # 处理骰子消息
 
 
 app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))  # 处理文字消息

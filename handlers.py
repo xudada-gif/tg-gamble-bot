@@ -1,18 +1,12 @@
-import json
-
 from pypinyin import lazy_pinyin, Style
 from telegram import Update
-from telegram.ext import ContextTypes, CallbackContext
+from telegram.ext import ContextTypes
 from database import *
 from utils import log_command
+from game_logic_func import format_bet_data
 import re
 def_money = int(os.getenv("DEF_MONEY"))
 
-num = []
-en_num = 0
-# 存储玩家的下注记录
-players_bets = {}
-# 赔率表
 
 # 定义下注规则的正则表达式
 BETTING_RULES = {
@@ -31,16 +25,16 @@ BETTING_RULES = {
 
 # 处理所有普通消息
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """处理所有消息"""
+    """处理所有文本消息"""
     message = update.message.text
+    if message is None:  # 避免 re.sub 处理 None
+        return
     message = re.sub(r'\s+', ' ', message).strip()
     user = update.message.from_user
     # 逐个检查规则
     for rule_name, pattern in BETTING_RULES.items():
         match = re.match(pattern, message)
-
-        # if match and context.bot_data.get("running"):
-        if match:
+        if match and context.bot_data.get("running"):
             bet_data = {}
             if rule_name == '大小':
                 choice = match.group(1)  # 大或小
@@ -155,12 +149,6 @@ async def show_money(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 @log_command
-async def bet(update: Update, context: CallbackContext):
-    conn, curses = connect_to_db()
-    res = get_users_bet_info_db(curses)
-    print(res)
-
-@log_command
 async def cancel_bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """取消押注"""
     user_id = update.effective_user.id
@@ -171,14 +159,19 @@ async def cancel_bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # 1、先获取用户押注信息
-    res = get_user_info_db(cursor, user_id)
-    if res[0]["bet_amount"] < 0:
-        await update.message.reply_text(f"❌ {user_id}:你没有任何押注！")
-        return
+    user_bet = get_user_bet_info_db(cursor, user_id)
+    bet_list = json.loads(user_bet) if user_bet else []  # 如果 bets 为空，则默认 []
+    bet_money = 0
+    for i in bet_list:
+        bet_money += int(i['money'])
     # 2、情况押注大小，返回押注金额
-    update_balance_db(cursor, [user_id], [res[0]["bet_amount"]])
-    delete_bet_db(cursor, [user_id])
-    await update.message.reply_text(f"✅ {user_id}:你已成功取消押注，押金已经返回账户。")
+    update_balance_db(conn,cursor,[user_id],[bet_money])
+    # 3、清空押注信息
+    delete_bet_db(conn, cursor, [user_id])
+    if bet_money != 0:
+        await update.message.reply_text(f"✅ {user_id}:你已成功取消押注，押金{bet_money}已经返回账户。")
+    else:
+        await update.message.reply_text(f"❌ {user_id}:你还没有押注！")
     conn.close()
 
 
@@ -186,11 +179,18 @@ async def cancel_bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def show_bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """查询用户押注信息"""
     user_id = update.effective_user.id
+    username = " ".join(filter(None, [update.effective_user.first_name, update.effective_user.last_name]))
 
     conn, cursor = connect_to_db()
 
-    user_bet = get_user_bet_info_db(cursor, user_id)
+    db_user_bet = get_user_bet_info_db(cursor, user_id)
+    user_bet = {
+        'user_id':user_id,
+        'name':username,
+        'bet':db_user_bet
+    }
+    res =  await format_bet_data([user_bet])
 
-    await update.message.reply_text(f"🎲 你押注了： {user_bet}")
+    await update.message.reply_text(f"🎲 你押注了： \n{res}")
     conn.close()
 

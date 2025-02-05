@@ -13,11 +13,6 @@ import logging
 async def start_round(update: Update, context: CallbackContext):
     """ 开始新一轮游戏 """
     context.bot_data["running"] = True
-
-    app = context.application
-    dice_handler = MessageHandler(filters.Dice(), handle_dice_roll)
-    app.add_handler(dice_handler)
-
     chat_id = update.effective_chat.id
     context.bot_data["bet_users"] = {}
 
@@ -57,7 +52,7 @@ async def start_round(update: Update, context: CallbackContext):
     context.bot_data["countdown_task"] = asyncio.create_task(countdown_task(update, context, chat_id, issue_num))
     logging.info("新倒计时任务已创建")
 
-# 2、倒计时结束后处理下注和投骰子
+# 2、统计下注（不能投注后）
 async def countdown_task(update: Update, context: CallbackContext, chat_id: int, issue_num: int):
     """ 倒计时结束后处理下注和投骰子 """
     game_time = context.bot_data["game_num"]
@@ -153,8 +148,6 @@ async def handle_dice_roll(update: Update, context: CallbackContext):
 
     await process_dice_result(update, context, chat_id)
 
-
-
 # 4、处理投骰子的结果并执行后续逻辑
 async def process_dice_result(update: Update, context: CallbackContext, chat_id: int):
     """ 处理投骰子的结果并执行后续逻辑 """
@@ -229,9 +222,9 @@ async def process_dice_result(update: Update, context: CallbackContext, chat_id:
             # 转换成列表
             ids = list(ids)
             money_values = list(money_values)
-            update_balance_db(conn,curses,ids,money_values)
+            update_balance_db(conn, curses, ids, money_values)
             # 2、清空用户下注内容
-            delete_bets_db(conn,curses)
+            delete_bets_db(conn, curses)
         # 生成骰子统计图片
         try:
             img_base64, count_big, count_small = await dice_photo(context)
