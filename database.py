@@ -58,13 +58,13 @@ def create_table_if_not_exists_db(cursor, conn):
         ''')
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS transactions (
-                transaction_id BIGINT UNSIGNED NOT NULL,  # 使用 BIGINT 存储唯一 ID
-                user_id BIGINT NOT NULL,  # 用户ID，关联到 users 表的 user_id
-                amount INT NOT NULL,  # 充值或提取金额
-                transaction_type TINYINT(1) NOT NULL,  # 交易类型，0 表示提取，1 表示充值
-                transaction_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  # 交易时间，默认为当前时间
-                FOREIGN KEY (user_id) REFERENCES users(user_id),  # 设置外键约束，确保 user_id 在 users 表中存在
-                PRIMARY KEY (transaction_id)  # 定义一个主键
+                transaction_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,  # 添加 AUTO_INCREMENT
+                user_id BIGINT NOT NULL,
+                amount INT NOT NULL,
+                transaction_type TINYINT(1) NOT NULL,
+                transaction_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(user_id),
+                PRIMARY KEY (transaction_id)
             );
         ''')
         conn.commit()
@@ -78,35 +78,41 @@ def add_user_db(conn, cursor, user_id: int, name: str, def_money: int):
     conn.commit()
 
 
-def update_balance_db(cursor, user_ids: list, amounts: list):
+def update_balance_db(conn, cursor, user_ids: list, amounts: list):
     """更新用户余额"""
     for user_id, amount in zip(user_ids, amounts):
         cursor.execute("UPDATE users SET money = money + %s WHERE user_id = %s", (amount, user_id))
+    conn.commit()
 
 
 def place_bet_db(conn, cursor, user_id: int, bet: dict):
     """用户押注"""
-    bets = get_user_bet_info_db(cursor, user_id)
-    bet_list = json.loads(bets)  # 解析 JSON
-    bet_list = list(bet_list)
-    bet_list.append(bet)
+    bets = get_user_bet_info_db(cursor, user_id)  # 可能返回 None
+    bet_list = json.loads(bets) if bets else []  # 如果 bets 为空，则默认 []
+    bet_list.append(bet)  # 追加新押注
     cursor.execute("UPDATE users SET bet = %s WHERE user_id = %s", (json.dumps(bet_list), user_id))
     conn.commit()
 
+
 def delete_bet_db(cursor, user_ids: list):
     """重置指定用户的押注信息"""
-    cursor.execute("UPDATE users SET bet = '[]' WHERE user_id IN (%s)" % ",".join(map(str, user_ids)))
+    if not user_ids:
+        return  # 避免 SQL 语法错误
+    placeholders = ",".join(["%s"] * len(user_ids))  # 根据 user_ids 的数量生成占位符
+    sql = f"UPDATE users SET bet = JSON_ARRAY() WHERE user_id IN ({placeholders})"
+    cursor.execute(sql, user_ids)
 
 
 def delete_bets_db(conn, cursor):
-    """重置所有用户的押注信息"""
-    cursor.execute("UPDATE users SET bet = '[]' WHERE user_id = *")
+    """重置所有用户的押注信息（JSON 类型）"""
+    cursor.execute("UPDATE users SET bet = JSON_ARRAY()")
     conn.commit()
+
 
 
 def get_user_info_db(cursor, user_id: int):
     """查询用户信息"""
-    cursor.execute("SELECT * FROM users WHERE user_id = %s", user_id)
+    cursor.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))  # 需要用 (user_id,) 作为元组
     result = cursor.fetchall()
     return result
 

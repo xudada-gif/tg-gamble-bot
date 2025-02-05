@@ -9,24 +9,11 @@ import re
 def_money = int(os.getenv("DEF_MONEY"))
 
 num = []
-counter = 0
 en_num = 0
 # 存储玩家的下注记录
 players_bets = {}
 # 赔率表
-ODDS = {
-    "大小": 0.95,
-    "大小单双": 2.98,
-    "和值": {
-        4: 50, 5: 18, 6: 14, 7: 12, 8: 8, 9: 7, 10: 6, 11: 6, 12: 7, 13: 8, 14: 12, 15: 14, 16: 18, 17: 50
-    },
-    "指定豹子": 300,
-    "豹子": 180,
-    "对子": 11,
-    "指定对子": 33,
-    "定位胆": 9,
-    "顺子": 30
-}
+
 # 定义下注规则的正则表达式
 BETTING_RULES = {
     '大小': r'^(大|小|d|x|da|xiao)\s*(\d+)$',
@@ -109,23 +96,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             place_bet_db(conn, curses, user_id, bet_data)
 
             await update.message.reply_text(f"{message} 下注成功！")
-
-    # chat_type = update.message.chat.type
-    # message = update.message.text
-    #
-    # # 根据消息类型进行处理 群 supergroup
-    # if chat_type == "private" and message == "/start":
-    #     # 如果是私聊，回复消息
-    #     # 图片路径，可以是本地文件路径或者图片 URL
-    #     image_path = './code.png'  # 本地图片路径
-    #     # 你也可以使用 URL，例如：image_url = 'https://example.com/business_card.jpg'
-    #     # 发送图片和文本
-    #     await update.message.reply_photo(photo=image_path,
-    #                                      caption="👋 欢迎！这是我的名片，期待与您的合作！\n\n可以随时联系我，有任何问题都可以询问。")
-    #
-    # if chat_type == "supergroup":
-    #     # 如果是群组消息，删除无效消息 !!!需要将机器人设为管理员
-    #     await update.message.delete()
 
 
 @log_command
