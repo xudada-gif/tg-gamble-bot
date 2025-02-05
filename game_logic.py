@@ -1,13 +1,23 @@
 import asyncio
 import base64
 import json
+import logging
+import threading
+import time
 from collections import defaultdict
 from io import BytesIO
-from telegram.ext import CallbackContext,MessageHandler, filters
+
 from telegram import Update
-from game_logic_func import BetHandler, issue, safe_send_message, safe_send_dice, dice_photo, get_top_bettor, format_bet_data, get_animation_file_id
+from telegram.ext import CallbackContext
+
 from database import connect_to_db, update_balance_db, get_users_bet_info_db, delete_bets_db
-import logging
+from game_logic_func import BetHandler, issue, safe_send_message, safe_send_dice, dice_photo, get_top_bettor, \
+    format_bet_data, get_animation_file_id
+
+# 配置日志
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 # 1、开始新一轮游戏
 async def start_round(update: Update, context: CallbackContext):
@@ -63,6 +73,7 @@ async def countdown_task(update: Update, context: CallbackContext, chat_id: int,
     conn, cursor = connect_to_db()
     users_bet = get_users_bet_info_db(cursor)
     context.bot_data["bet_users"] = users_bet
+
     # 获取本轮用户下注信息
     output = await format_bet_data(users_bet)
     # 获取押注金额最多的用户
@@ -100,15 +111,31 @@ async def countdown_task(update: Update, context: CallbackContext, chat_id: int,
             read_timeout=20,
             parse_mode='HTML'
         )
+
     if re_game:
         await start_round(update, context)
         return
 
-    # 处理骰子逻辑
-    context.bot_data["total_point"] = []
     if len(max_users) == 1:
         context.bot_data["highest_bet_userid"] = max_users[0]['user_id']
-    else:
+    if len(max_users) > 1:
+        await bot_dice_roll(update, context)
+
+    # 处理骰子逻辑
+    context.bot_data["total_point"] = []
+    await countdown_and_handle_dice(update, context, chat_id)
+
+
+async def countdown_and_handle_dice(update: Update, context: CallbackContext, chat_id: int):
+    """倒计时并处理用户投骰子"""
+    for seconds in range(25, 0, -1):
+        if len(context.bot_data["total_point"]) >= 3:
+            break
+        if seconds == 5:
+            await safe_send_message(context, chat_id, "剩余5秒，不要丢骰子，丢了识别不到又要逼逼赖赖")
+        await asyncio.sleep(1)
+
+    if len(context.bot_data["total_point"]) < 3:
         await bot_dice_roll(update, context)
 
 
@@ -118,7 +145,7 @@ async def bot_dice_roll(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     logging.info(f"开始投骰子 | Chat ID: {chat_id}")
 
-    for _ in range(3):
+    for _ in range(3-len(context.bot_data["total_point"])):
         dice_message = await safe_send_dice(context, chat_id)
         if dice_message is None:
             await safe_send_message(context, chat_id, "⚠️ 投骰子失败，重试中...")
@@ -129,12 +156,13 @@ async def bot_dice_roll(update: Update, context: CallbackContext):
 
     await process_dice_result(update, context, chat_id)
 
+
 # 3、处理用户投骰子
 async def handle_dice_roll(update: Update, context: CallbackContext):
     """ 处理用户投骰子 """
     chat_id = update.effective_chat.id
     logging.info(f"开始投骰子 | Chat ID: {chat_id}")
-    # 如果投掷筛子
+
     if context.bot_data.get("running", False):
         return await update.message.delete()
     if update.message.from_user.id != context.bot_data["highest_bet_userid"]:
@@ -148,6 +176,7 @@ async def handle_dice_roll(update: Update, context: CallbackContext):
 
     await process_dice_result(update, context, chat_id)
 
+
 # 4、处理投骰子的结果并执行后续逻辑
 async def process_dice_result(update: Update, context: CallbackContext, chat_id: int):
     """ 处理投骰子的结果并执行后续逻辑 """
@@ -159,10 +188,8 @@ async def process_dice_result(update: Update, context: CallbackContext, chat_id:
             return
 
         total_points = sum(total_point)
-        if "total_points" not in context.bot_data:
-            context.bot_data["total_points"] = []  # 确保是列表
 
-        context.bot_data["total_points"].append(total_points)
+        context.bot_data["total_points"] = context.bot_data.get("total_points", []) + [total_points]
         # 下注类型处理映射
         bet_handlers = {
             "大小": BetHandler.handle_daxiao,
@@ -182,61 +209,55 @@ async def process_dice_result(update: Update, context: CallbackContext, chat_id:
         user_bet_res = []
         for user_bet in bet_users:
             user_id = user_bet['user_id']
-            # 确保 bet 是列表
-            bets = user_bet.get('bet', '[]')
-            if isinstance(bets, str):
-                try:
-                    bets = json.loads(bets)  # 解析 JSON 字符串
-                except json.JSONDecodeError:
-                    logging.error(f"用户 {user_id} 的 bet 字段 JSON 解析失败: {bets}")
-                    continue  # 跳过这个用户
+            bets = json.loads(user_bet.get('bet', '[]'))  # 解析 JSON 字符串
             result_message += f"👤 玩家 {user_id} 的押注结果：\n"
 
             for bet in bets:
-
                 bet_type = bet['type']
                 if bet_type in bet_handlers:
-                    message, matched = await bet_handlers[bet_type](bet,
-                                                                    total_points if bet_type in ["大小", "大小单双","和值"]
-                                                                    else total_point)
+                    message, matched = await bet_handlers[bet_type](
+                        bet, total_points if bet_type in ["大小", "大小单双", "和值"] else total_point
+                    )
                     if not matched:
                         bet['money'] = -int(bet['money'])
                     user_bet_res.append({
-                        'id':user_id,
-                        'money':int(bet['money']),
-                        'matched':matched
+                        'id': user_id,
+                        'money': int(bet['money']),
+                        'matched': matched
                     })
                     result_message += message
                 else:
                     result_message += f"❌ 未知下注类型：{bet_type}，输了：{bet['money']}!\n"
-        # 统计玩家输赢：[{ID:金额}]
-        if not user_bet_res:
+
+        # 统计玩家输赢
+        if user_bet_res:
             money_sum = defaultdict(int)
             for item in user_bet_res:
                 money_sum[item['id']] += item['money']
             result = dict(money_sum)
-            # 1、更新用户余额
-            conn, curses = connect_to_db()
-            # 提取键和值
-            ids, money_values = zip(*result.items())
-            # 转换成列表
-            ids = list(ids)
-            money_values = list(money_values)
-            update_balance_db(conn, curses, ids, money_values)
-            # 2、清空用户下注内容
-            delete_bets_db(conn, curses)
+
+            # 更新用户余额
+            conn, cursor = connect_to_db()
+            ids = list(result.keys())
+            money_values = list(result.values())
+            update_balance_db(conn, cursor, ids, money_values)
+
+            # 清空用户下注内容
+            delete_bets_db(conn, cursor)
+
         # 生成骰子统计图片
         try:
             img_base64, count_big, count_small = await dice_photo(context)
             image_data = base64.b64decode(img_base64)
             image_io = BytesIO(image_data)
             image_io.seek(0)
-            await context.bot.send_photo(photo=image_io, chat_id=chat_id, caption=result_message, read_timeout=20)
+            await context.bot.send_photo(photo=image_io, chat_id=chat_id, caption=result_message,
+                                         read_timeout=20)
         except Exception as e:
-            logging.error(f"生成或发送骰子统计图片时出错: {e}")
+            logger.error(f"生成或发送骰子统计图片时出错: {e}")
 
         # 开启新一轮
         await asyncio.sleep(2)
         await start_round(update, context)
     except Exception as e:
-        logging.error(f"处理骰子结果时出错: {e}")
+        logger.error(f"处理骰子结果时出错: {e}")

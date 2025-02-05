@@ -35,51 +35,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for rule_name, pattern in BETTING_RULES.items():
         match = re.match(pattern, message)
         if match and context.bot_data.get("running"):
-            bet_data = {}
-            if rule_name == '大小':
-                choice = match.group(1)  # 大或小
-                money = int(match.group(2))  # 金额
-                choice = ''.join(lazy_pinyin(choice, style=Style.FIRST_LETTER))
-                bet_data = {"type": rule_name, "choice": choice, "money": money}
-            elif rule_name == '大小单双':
-                choice = match.group(1)
-                money = int(match.group(2))
-                choice = ''.join(lazy_pinyin(choice, style=Style.FIRST_LETTER))
-                bet_data = {"type": rule_name, "choice": choice, "money": money}
-            elif rule_name == '和值':
-                choice = match.group(2)  # 和值
-                money = int(match.group(3))  # 金额
-                bet_data = {"type": rule_name, "choice": choice, "money": money}
-            elif rule_name == '对子':
-                money = int(match.group(2))  # 金额
-                bet_data = {"type": rule_name, "money": money}
-            elif rule_name == '指定对子':
-                choice = int(match.group(2))
-                money = int(match.group(3))  # 金额
-                bet_data = {"type": rule_name, "choice": choice, "money": money}
-            elif rule_name == '顺子':
-                money = int(match.group(2))  # 金额
-                bet_data = {"type": rule_name, "money": money}
-            elif rule_name == '豹子':
-                money = int(match.group(2))  # 金额
-                bet_data = {"type": "豹子", "money": money}
-            elif rule_name == '指定豹子':
-                choice = match.group(2)
-                money = int(match.group(3))  # 金额
-                bet_data = {"type": "豹子", "choice": choice, "money": money}
-            elif rule_name == '定位胆':
-                dice = match.group(2)  # 第几个筛子
-                number = match.group(3)  # 第筛子点数
-                money = int(match.group(4))  # 金额
-                bet_data = {"type": rule_name, "position": dice, "dice_value": number, "money": money}
-            elif rule_name == '定位胆y':
-                dice = match.group(1)
-                money = match.group(2)  # 金额
-                bet_data = {"type": rule_name, "position": dice, "dice_value": dice, "money": money}
-
             # 连接数据库
             conn, curses = connect_to_db()
             user_id = user.id
+
             first_name = user.first_name
             last_name = user.last_name or ""  # 可能为空
             full_name = f"{first_name} {last_name}".strip()
@@ -87,8 +46,71 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # 如果数据库中没有用户先创建用户实例
             if not user_info:
                 add_user_db(conn, curses, user_id, full_name, def_money)
-            place_bet_db(conn, curses, user_id, bet_data)
+            user_info = get_user_info_db(curses, user_id)
+            udb_money = int(user_info[0]['money'])
+            bet_data = {}
+            if rule_name == '大小':
+                choice = match.group(1)  # 大或小
+                money = int(match.group(2))  # 金额
+                if udb_money < money:
+                   return await update.message.reply_text(f"❌余额不足！")
+                choice = ''.join(lazy_pinyin(choice, style=Style.FIRST_LETTER))
+                bet_data = {"type": rule_name, "choice": choice, "money": money}
+            elif rule_name == '大小单双':
+                choice = match.group(1)
+                money = int(match.group(2))
+                if udb_money < money:
+                   return await update.message.reply_text(f"❌余额不足！")
+                choice = ''.join(lazy_pinyin(choice, style=Style.FIRST_LETTER))
+                bet_data = {"type": rule_name, "choice": choice, "money": money}
+            elif rule_name == '和值':
+                choice = match.group(2)  # 和值
+                money = int(match.group(3))  # 金额
+                if udb_money < money:
+                   return await update.message.reply_text(f"❌余额不足！")
+                bet_data = {"type": rule_name, "choice": choice, "money": money}
+            elif rule_name == '对子':
+                money = int(match.group(2))  # 金额
+                if udb_money < money:
+                   return await update.message.reply_text(f"❌余额不足！")
+                bet_data = {"type": rule_name, "money": money}
+            elif rule_name == '指定对子':
+                choice = int(match.group(2))
+                money = int(match.group(3))  # 金额
+                if udb_money < money:
+                   return await update.message.reply_text(f"❌余额不足！")
+                bet_data = {"type": rule_name, "choice": choice, "money": money}
+            elif rule_name == '顺子':
+                money = int(match.group(2))  # 金额
+                if udb_money < money:
+                   return await update.message.reply_text(f"❌余额不足！")
+                bet_data = {"type": rule_name, "money": money}
+            elif rule_name == '豹子':
+                money = int(match.group(2))  # 金额
+                if udb_money < money:
+                   return await update.message.reply_text(f"❌余额不足！")
+                bet_data = {"type": "豹子", "money": money}
+            elif rule_name == '指定豹子':
+                choice = match.group(2)
+                money = int(match.group(3))  # 金额
+                if udb_money < money:
+                   return await update.message.reply_text(f"❌余额不足！")
+                bet_data = {"type": "豹子", "choice": choice, "money": money}
+            elif rule_name == '定位胆':
+                dice = match.group(2)  # 第几个筛子
+                number = match.group(3)  # 第筛子点数
+                money = int(match.group(4))  # 金额
+                if udb_money < money:
+                   return await update.message.reply_text(f"❌余额不足！")
+                bet_data = {"type": rule_name, "position": dice, "dice_value": number, "money": money}
+            elif rule_name == '定位胆y':
+                dice = match.group(1)
+                money = match.group(2)  # 金额
+                if udb_money < money:
+                   return await update.message.reply_text(f"❌余额不足！")
+                bet_data = {"type": rule_name, "position": dice, "dice_value": dice, "money": money}
 
+            place_bet_db(conn, curses, user_id, bet_data)
             await update.message.reply_text(f"{message} 下注成功！")
 
 
