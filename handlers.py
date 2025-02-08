@@ -1,8 +1,8 @@
 from pypinyin import lazy_pinyin, Style
-from telegram import Update
-from telegram.ext import ContextTypes
+from telegram import Update, ChatPermissions
+from telegram.ext import ContextTypes, CallbackContext
 from database import *
-from utils import log_command
+from utils import log_command, user_exists
 from game_logic_func import format_bet_data
 import re
 def_money = int(os.getenv("DEF_MONEY"))
@@ -30,24 +30,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if message is None:  # 避免 re.sub 处理 None
         return
     message = re.sub(r'\s+', ' ', message).strip()
-    user = update.message.from_user
+    # 连接数据库
+    conn, curses = connect_to_db()
+    user = update.effective_user
+    user_id = user.id
+    username = user.username
     # 逐个检查规则
     for rule_name, pattern in BETTING_RULES.items():
         match = re.match(pattern, message)
         if match and context.bot_data.get("running"):
-            # 连接数据库
-            conn, curses = connect_to_db()
-            user_id = user.id
-
-            first_name = user.first_name
-            last_name = user.last_name or ""  # 可能为空
-            full_name = f"{first_name} {last_name}".strip()
+            full_name = " ".join(filter(None, [update.effective_user.first_name, update.effective_user.last_name])).strip()
             user_info = get_user_info_db(curses, user_id)
             # 如果数据库中没有用户先创建用户实例
-            if not user_info:
-                add_user_db(conn, curses, user_id, full_name, def_money)
-            user_info = get_user_info_db(curses, user_id)
-            udb_money = int(user_info[0]['money'])
+            if not user_exists(curses, user_id):
+                add_user_db(conn, curses, user_id, username, full_name, def_money)
+
+            udb_money = int(user_info['money'])
             bet_data = {}
             if rule_name == '大小':
                 choice = match.group(1)  # 大或小
@@ -117,24 +115,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @log_command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    开始游戏
+    初始化用户
     """
-    user_id = update.effective_user.id
-    username = " ".join(filter(None, [update.effective_user.first_name, update.effective_user.last_name]))
+    user = update.effective_user
+    user_id = user.id
+    username = user.username
+    full_name = " ".join(filter(None, [update.effective_user.first_name, update.effective_user.last_name])).strip()
 
     conn, cursor = connect_to_db()
-    if conn is None:
-        await update.message.reply_text("❌ 数据库连接失败，请稍后重试！")
-        return
-    # 1、先查询该用户id在数据库当中是否存在
-    res = get_user_info_db(cursor, user_id)
-    if res and isinstance(res, list) and len(res) > 0 and "user_id" in res[0]:
-        await update.message.reply_text(f"❌ {username}: 您已经不是新用户！请开始押注！")
-        conn.close()
+    # 查询该用户id在数据库当中是否存在
+    if user_exists(cursor, user_id):
         return
 
-    # 2、如果不存在则添加，存在提示已经不是新用户
-    add_user_db(conn, cursor, user_id, username,def_money)
+    add_user_db(conn, cursor, user_id, username, full_name, def_money)
     user_info = get_user_info_db(cursor, user_id)
 
     # 新用户创建完发送一个广告
@@ -142,13 +135,31 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 图片路径，可以是本地文件路径或者图片 URL, 你也可以使用 URL，例如：image_url = 'https://example.com/business_card.jpg'
         image_path = 'https://img95.699pic.com/desgin_photo/40045/0341_list.jpg!/fw/431/clip/0x300a0a0'  # 本地图片路径
         await update.message.reply_photo(photo=image_path,
-                                         caption=f"👋 🎮 欢迎新用户 🌟{user_info[0]['name']}🌟，"
-                                                 f"你的初始余额是 ${user_info[0]['money']} 金币！",
+                                         caption=f"👋 🎮 欢迎新用户 🌟{user_info['name']}({username})🌟，"
+                                                 f"你的初始余额是 ${user_info['money']} 金币！",
                                          read_timeout=10)
 
     else:
         await update.message.reply_text("❌ 用户初始化失败，请联系群主！")
     conn.close()
+
+# 处理用户进群和退群
+async def chat_member_update(update: Update, context: CallbackContext):
+    chat_member = update.chat_member
+    user = chat_member.new_chat_member.user
+    chat_id = update.effective_chat.id
+    user_id = user.id
+    status = chat_member.new_chat_member.status  # 获取用户状态
+
+    if status == "member":  # 只对新成员生效
+        # 限制用户，仅允许阅读消息
+        permissions = ChatPermissions(can_send_messages=False)
+        await context.bot.restrict_chat_member(chat_id, user_id, permissions)
+
+        # 提示用户必须输入 /start
+        welcome_message = f"👋 欢迎 {user.full_name}！\n请发送 **/start** 以解锁聊天权限。"
+        await context.bot.send_message(chat_id=chat_id, text=welcome_message)
+
 
 
 @log_command
@@ -164,7 +175,7 @@ async def show_money(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_info = get_user_info_db(cursor, user_id)
 
     if user_info:
-        await update.message.reply_text(f"💰 你的当前余额：{user_info[0]['money']} 金币")
+        await update.message.reply_text(f"💰 你的当前余额：{user_info['money']} 金币")
     else:
         await update.message.reply_text("❌ 你还未加入游戏，请使用 /start 加入！")
     conn.close()

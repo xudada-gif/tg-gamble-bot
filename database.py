@@ -1,4 +1,5 @@
 import json
+from typing import Union
 
 import pymysql
 import os
@@ -43,25 +44,39 @@ def create_table_if_not_exists_db(cursor, conn):
     try:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
-                user_id BIGINT NOT NULL, # user_id 列为 BIGINT 类型，设置为主键，确保每个用户的 ID 唯一
-                user_start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  # 用户加入时间
-                name VARCHAR(255) NOT NULL, # name 列为 VARCHAR 类型，最大长度为 255，不能为空
-                money INT DEFAULT 0,    # money 列为 INT 类型，默认值为 0，用于记录用户的金额
-                top_up_num INT DEFAULT 0,   # top_up_num 列为 INT 类型，默认值为 0，用于记录用户充值次数
-                sell_num INT DEFAULT 0,     # sell_num 列为 INT 类型，默认值为 0，用于记录用户出售次数
-                bet JSON NULL,  # 押注数据（列表格式，JSON 类型）
-                PRIMARY KEY (user_id)  # 定义一个主键
+                user_id BIGINT UNSIGNED NOT NULL,  
+                user_start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  -- 用户加入时间
+                username VARCHAR(255) NOT NULL,  -- 用户名
+                name VARCHAR(255) NOT NULL,  -- 昵称
+                money INT UNSIGNED DEFAULT 0,  -- 余额不允许负值
+                top_up_num INT UNSIGNED DEFAULT 0,  
+                sell_num INT UNSIGNED DEFAULT 0,  
+                bet JSON NULL,  -- JSON 存储押注数据
+                PRIMARY KEY (user_id)  -- 定义主键
             );
         ''')
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS transactions (
                 transaction_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,  # 添加 AUTO_INCREMENT
-                user_id BIGINT NOT NULL,
-                amount INT NOT NULL,
-                transaction_type TINYINT(1) NOT NULL,
+                user_id BIGINT UNSIGNED  NOT NULL,
+                amount INT UNSIGNED NOT NULL,
+                transaction_type TINYINT NOT NULL,
                 transaction_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(user_id),
-                PRIMARY KEY (transaction_id)
+                PRIMARY KEY (transaction_id),  
+                FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,  -- 级联删除
+                INDEX idx_user_id (user_id)  -- 索引优化查询
+            );
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS bets (
+                id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,  
+                user_id BIGINT UNSIGNED NOT NULL,  
+                money INT UNSIGNED NOT NULL,  
+                bet_type TINYINT NOT NULL,  -- 允许更多下注类型
+                bet_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  
+                PRIMARY KEY (id),  
+                FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,  
+                INDEX idx_user_id (user_id)  -- 索引优化查询
             );
         ''')
         conn.commit()
@@ -69,16 +84,23 @@ def create_table_if_not_exists_db(cursor, conn):
     except pymysql.MySQLError as err:
         print(f"❌ 创建表失败：{err}")
 
-def add_user_db(conn, cursor, user_id: int, name: str, def_money: int):
+
+def add_user_db(conn, cursor, user_id: int, username: str, name: str, def_money: int):
     """添加新用户（如果不存在）"""
-    cursor.execute("INSERT IGNORE INTO users (user_id, name, money) VALUES (%s, %s, %s)", (user_id, name, def_money))
+    cursor.execute("INSERT IGNORE INTO users (user_id, username, name, money) VALUES (%s, %s, %s, %s)", (user_id, username, name, def_money))
     conn.commit()
 
+def get_user_id_db(cursor, username:str):
+    """通过username获取用户id"""
+    cursor.execute("SELECT user_id FROM users WHERE username = %s", (username,))
+    result = cursor.fetchone()
+    return result
 
 def update_balance_db(conn, cursor, user_ids: list, amounts: list):
     """更新用户余额"""
-    for user_id, amount in zip(user_ids, amounts):
-        cursor.execute("UPDATE users SET money = money + %s WHERE user_id = %s", (amount, user_id))
+    for user_id, money in zip(user_ids, amounts):
+        money = int(money)
+        cursor.execute("UPDATE users SET money = money + %s WHERE user_id = %s OR username = %s", (money, user_id, user_ids))
     conn.commit()
 
 
@@ -107,10 +129,10 @@ def delete_bets_db(conn, cursor):
     conn.commit()
 
 
-def get_user_info_db(cursor, user_id: int):
+def get_user_info_db(cursor, user_id: Union[int, str]):
     """查询用户信息"""
-    cursor.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))  # 需要用 (user_id,) 作为元组
-    result = cursor.fetchall()
+    cursor.execute("SELECT * FROM users WHERE user_id = %s OR username = %s", (user_id, user_id))  # 需要用 (user_id,) 作为元组
+    result = cursor.fetchone()
     return result
 
 

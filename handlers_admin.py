@@ -1,9 +1,9 @@
 from telegram import Update
 from game_logic import  start_round
-from utils import admin_required, log_command
+from utils import admin_required, log_command, user_exists
 from telegram.ext import ContextTypes, CallbackContext
 from game_logic_func import format_bet_data
-from database import connect_to_db, get_users_bet_info_db, get_users_moneys_info_db
+from database import connect_to_db, get_users_bet_info_db, get_users_moneys_info_db, update_balance_db, get_user_id_db
 import os
 
 
@@ -73,3 +73,43 @@ async def show_moneys(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 输出完整内容
     await update.message.reply_text(f"名字——id——余额\n{output.strip()}")
 
+
+@log_command
+@admin_required
+async def user_money_add(update: Update, context: CallbackContext):
+    """用户余额充值"""
+    username = context.args[0].lstrip("@")  # 去掉 @
+    money = context.args[1]
+    conn, cursor = connect_to_db()
+    if not user_exists(cursor,username):
+        await update.message.reply_text(f"{username}不存在，请执行/start初始化用户")
+        return
+    update_balance_db(conn,cursor,[username],[money])
+    await update.message.reply_text(f"{username}充值{money}成功！")
+
+
+@log_command
+@admin_required
+async def user_money_rev(update: Update, context: CallbackContext):
+    """用户余额提现"""
+    username = context.args[0].lstrip("@")  # 去掉 @
+    money = context.args[1]
+    money = -int(money)
+    conn, cursor = connect_to_db()
+    if not user_exists(cursor,username):
+        await update.message.reply_text(f"{username}不存在，请执行/start初始化用户")
+        return
+    update_balance_db(conn,cursor,[username],[money])
+    await update.message.reply_text(f"{username}提现{money}成功！")
+
+@log_command
+@admin_required
+async def get_user_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ 通过 @username 获取用户 ID（仅限群组） """
+    username = context.args[0].lstrip("@") # 去掉 @
+    conn, cursor = connect_to_db()
+    if not user_exists(cursor, username):
+        await update.message.reply_text(f"{username}不存在，请执行/start初始化用户")
+        return
+    user_id = get_user_id_db(cursor, username)
+    await update.message.reply_text(f"{username}ID:{user_id}")

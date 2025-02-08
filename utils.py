@@ -1,9 +1,13 @@
+from typing import Union
+
 from telegram import Update
 from telegram.ext import ContextTypes, CallbackContext
 from functools import wraps
 import requests
 import datetime
 import logging
+
+from database import get_user_info_db
 
 """部署时启动"""
 # # 配置日志记录
@@ -74,3 +78,9 @@ def log_command(func):
         return await func(update, context, *args, **kwargs)
 
     return wrapper
+
+
+def user_exists(cursor, user_id: Union[int, str]) -> bool:
+    """检查用户是否存在"""
+    result = get_user_info_db(cursor, user_id)
+    return result is not None  # 如果查询到数据返回 True，否则返回 False

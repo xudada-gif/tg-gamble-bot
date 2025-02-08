@@ -26,6 +26,7 @@ async def start_round(update: Update, context: CallbackContext):
 
     context.bot_data["bet_users"] = {}
 
+
     issue_num = await issue()
     gif_start_game = "./start_game.gif"
 
