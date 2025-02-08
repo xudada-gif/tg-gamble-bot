@@ -38,13 +38,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 逐个检查规则
     for rule_name, pattern in BETTING_RULES.items():
         match = re.match(pattern, message)
+        print(context.bot_data.get("running"))
         if match and context.bot_data.get("running"):
             full_name = " ".join(filter(None, [update.effective_user.first_name, update.effective_user.last_name])).strip()
             user_info = get_user_info_db(curses, user_id)
             # 如果数据库中没有用户先创建用户实例
             if not user_exists(curses, user_id):
                 add_user_db(conn, curses, user_id, username, full_name, def_money)
-
             udb_money = int(user_info['money'])
             bet_data = {}
             if rule_name == '大小':
@@ -107,7 +107,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if udb_money < money:
                    return await update.message.reply_text(f"❌余额不足！")
                 bet_data = {"type": rule_name, "position": dice, "dice_value": dice, "money": money}
-
+            print(bet_data)
             place_bet_db(conn, curses, user_id, bet_data)
             await update.message.reply_text(f"{message} 下注成功！")
 
@@ -141,7 +141,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     else:
         await update.message.reply_text("❌ 用户初始化失败，请联系群主！")
-    conn.close()
 
 # 处理用户进群和退群
 async def chat_member_update(update: Update, context: CallbackContext):

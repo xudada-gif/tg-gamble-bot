@@ -98,9 +98,16 @@ def get_user_id_db(cursor, username:str):
 
 def update_balance_db(conn, cursor, user_ids: list, amounts: list):
     """更新用户余额"""
+    updates = []
+
     for user_id, money in zip(user_ids, amounts):
         money = int(money)
-        cursor.execute("UPDATE users SET money = money + %s WHERE user_id = %s OR username = %s", (money, user_id, user_ids))
+        if isinstance(user_id, int):
+            updates.append((money, user_id, None))  # None 作为占位符
+        elif isinstance(user_id, str):
+            updates.append((money, None, user_id))  # None 作为占位符
+
+    cursor.executemany("UPDATE users SET money = money + %s WHERE user_id = %s OR username = %s", updates)
     conn.commit()
 
 
@@ -131,9 +138,14 @@ def delete_bets_db(conn, cursor):
 
 def get_user_info_db(cursor, user_id: Union[int, str]):
     """查询用户信息"""
-    cursor.execute("SELECT * FROM users WHERE user_id = %s OR username = %s", (user_id, user_id))  # 需要用 (user_id,) 作为元组
-    result = cursor.fetchone()
-    return result
+    if isinstance(user_id, int):  # user_id 是数字 ID
+        cursor.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
+    elif isinstance(user_id, str):  # user_id 是用户名
+        cursor.execute("SELECT * FROM users WHERE username = %s", (user_id,))
+    else:
+        return None  # 处理错误情况
+
+    return cursor.fetchone()  # 返回查询结果
 
 
 def get_users_info_db(cursor):
