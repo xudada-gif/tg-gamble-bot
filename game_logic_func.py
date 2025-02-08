@@ -188,7 +188,6 @@ async def dice_photo(context: CallbackContext):
     return img_base64, count_big, count_small
 
 
-# 计算押注金额最多的用户
 async def get_top_bettor(data):
     bet_sums = {}  # 存储每个用户的总押注金额
     for user in data:
@@ -196,10 +195,14 @@ async def get_top_bettor(data):
         name = user['name']
         bets = json.loads(user['bet'])  # 解析 JSON 结构
         # 计算该用户的总押注金额
-        total_money = 0
-        for bet in bets:
-            total_money += int(bet['money'])
-        bet_sums[user_id] = {"name": name, "user_id": user_id, "total_money": total_money}
+        total_money = sum(int(bet['money']) for bet in bets)
+        if total_money > 0:  # 只记录押注金额大于 0 的用户
+            bet_sums[user_id] = {"name": name, "user_id": user_id, "total_money": total_money}
+
+    # 如果没有用户押注（所有押注金额为 0），返回空列表
+    if not bet_sums:
+        return []
+
     # 找到押注金额最多的用户
     max_money = max(user["total_money"] for user in bet_sums.values())
 

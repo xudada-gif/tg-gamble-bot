@@ -9,7 +9,7 @@ load_dotenv()
 
 # 从环境变量中获取数据库连接信息
 host = os.getenv("HOST")
-db_user = os.getenv("USER")
+db_user = os.getenv("DB_USER")
 password = os.getenv("PASSWORD")
 database = os.getenv("DATABASE")
 
@@ -29,15 +29,12 @@ def connect_to_db():
             charset='utf8mb4',  # 推荐使用 utf8mb4 字符集
             cursorclass=pymysql.cursors.DictCursor  # 返回字典形式的查询结果
         )
-        cursor = conn.cursor()
         print("✅ 数据库连接成功")
-        return conn, cursor
-    except pymysql.MySQLError as err:
+        return conn, conn.cursor()
+    except (pymysql.MySQLError, Exception) as err:
         print(f"❌ 数据库连接失败: {err}")
         return None, None
-    except Exception as e:
-        print(f"❌ 发生未知错误：{e}")
-        return None, None
+
 
 def create_table_if_not_exists_db(cursor, conn):
     """
@@ -134,8 +131,14 @@ def get_user_bet_info_db(cursor, user_id: int):
 
 
 def get_users_bet_info_db(cursor):
-    """查询用户所有押注信息"""
-    cursor.execute("SELECT user_id, name, bet FROM users")
+    """查询用户所有押注信息（仅返回 bet 不为空的用户）"""
+    cursor.execute("""
+        SELECT user_id, name, bet 
+        FROM users 
+        WHERE bet IS NOT NULL 
+          AND TRIM(bet) != '[]' 
+          AND TRIM(bet) != ''
+    """)
     result = cursor.fetchall()
     return result
 

@@ -1,8 +1,11 @@
-from telegram.ext import ApplicationBuilder, CommandHandler,MessageHandler, filters
-from handlers import *
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
+from handlers import start,show_money,cancel_bet,show_bet,handle_message
 from database import connect_to_db, create_table_if_not_exists_db
 from handlers_admin import start_game, end_game, show_bets, show_moneys
 from game_logic import handle_dice_roll
+from dotenv import load_dotenv
+import os
+
 
 # 加载环境变量
 load_dotenv()
@@ -14,19 +17,19 @@ if not TOKEN:
     exit(1)
 
 conn, cursor = connect_to_db()
-# 确保 users 表存在
-create_table_if_not_exists_db(cursor, conn)
-if not conn is None:
+if conn:
+    create_table_if_not_exists_db(cursor, conn)
     print("✅ 数据库连接成功")
 
 # 创建 Bot 应用
 app = ApplicationBuilder().token(TOKEN).build()
 
 # 管理员命令
-app.add_handler(MessageHandler(filters.Text(["/start_game", "start_game"]), start_game))
-app.add_handler(MessageHandler(filters.Text(["结束", "/结束", "/stop", "stop"]), end_game))
-app.add_handler(MessageHandler(filters.Text(["所有余额", "/所有余额"]), show_moneys))
-app.add_handler(MessageHandler(filters.Text(["所有押注", "/所有押注"]), show_bets))
+app.add_handler(CommandHandler("start_game", start_game))
+app.add_handler(CommandHandler("stop", end_game))
+app.add_handler(CommandHandler("所有余额", show_moneys))
+app.add_handler(CommandHandler("所有押注", show_bets))
+
 
 # 普通用户命令
 app.add_handler(MessageHandler(filters.Text(["开始", "/开始", "/start", "start"]), start))

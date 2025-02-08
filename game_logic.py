@@ -2,8 +2,6 @@ import asyncio
 import base64
 import json
 import logging
-import threading
-import time
 from collections import defaultdict
 from io import BytesIO
 
@@ -15,7 +13,7 @@ from game_logic_func import BetHandler, issue, safe_send_message, safe_send_dice
     format_bet_data, get_animation_file_id
 
 # 配置日志
-logging.basicConfig(level=logging.INFO)
+# logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -23,7 +21,9 @@ logger = logging.getLogger(__name__)
 async def start_round(update: Update, context: CallbackContext):
     """ 开始新一轮游戏 """
     context.bot_data["running"] = True
+
     chat_id = update.effective_chat.id
+
     context.bot_data["bet_users"] = {}
 
     issue_num = await issue()
@@ -79,20 +79,20 @@ async def countdown_task(update: Update, context: CallbackContext, chat_id: int,
     # 获取押注金额最多的用户
     max_users = await get_top_bettor(users_bet)
 
-    re_game = False
     if len(max_users) == 1:
         context.bot_data["highest_bet_userid"] = max_users[0]['user_id']
         roll_prompt = f"请掷骰子玩家：@{max_users[0]['name']} {max_users[0]['user_id']} (总投注 {max_users[0]['total_money']}u)"
-    elif max_users:
+    elif max_users[0]['total_money'] < 10:
+        roll_prompt = "没有玩家下注超过10u，将由机器人投掷"
+    elif len(max_users) >= 2:
         roll_prompt = "存在多个最大下注玩家，由机器人下注"
     else:
         roll_prompt = "无玩家下注，跳过掷骰子阶段"
-        re_game = True
 
     caption_stop_game = f"""
      ----{issue_num}期下注玩家-----
 {output}
-
+——————————————————————
 👉轻触【<code>🎲</code>】复制投掷。
 {roll_prompt}
 
@@ -112,13 +112,10 @@ async def countdown_task(update: Update, context: CallbackContext, chat_id: int,
             parse_mode='HTML'
         )
 
-    if re_game:
-        await start_round(update, context)
-        return
 
-    if len(max_users) == 1:
+    if len(max_users) == 1 and max_users[0]['total_money']>=10:
         context.bot_data["highest_bet_userid"] = max_users[0]['user_id']
-    if len(max_users) > 1:
+    if len(max_users) != 1:
         await bot_dice_roll(update, context)
 
     # 处理骰子逻辑
@@ -205,29 +202,32 @@ async def process_dice_result(update: Update, context: CallbackContext, chat_id:
         }
 
         result_message = f"🎲 开奖结果：{total_point}（总和：{total_points}）\n\n"
-        bet_users = context.bot_data.get("bet_users")
+        bet_users = context.bot_data["bet_users"]
         user_bet_res = []
-        for user_bet in bet_users:
-            user_id = user_bet['user_id']
-            bets = json.loads(user_bet.get('bet', '[]'))  # 解析 JSON 字符串
-            result_message += f"👤 玩家 {user_id} 的押注结果：\n"
+        if bet_users == ():
+            result_message += '流水'
+        else:
+            for user_bet in bet_users:
+                user_id = user_bet['user_id']
+                bets = json.loads(user_bet.get('bet', '[]'))  # 解析 JSON 字符串
+                result_message += f"👤 玩家 {user_id} 的押注结果：\n"
 
-            for bet in bets:
-                bet_type = bet['type']
-                if bet_type in bet_handlers:
-                    message, matched = await bet_handlers[bet_type](
-                        bet, total_points if bet_type in ["大小", "大小单双", "和值"] else total_point
-                    )
-                    if not matched:
-                        bet['money'] = -int(bet['money'])
-                    user_bet_res.append({
-                        'id': user_id,
-                        'money': int(bet['money']),
-                        'matched': matched
-                    })
-                    result_message += message
-                else:
-                    result_message += f"❌ 未知下注类型：{bet_type}，输了：{bet['money']}!\n"
+                for bet in bets:
+                    bet_type = bet['type']
+                    if bet_type in bet_handlers:
+                        message, matched = await bet_handlers[bet_type](
+                            bet, total_points if bet_type in ["大小", "大小单双", "和值"] else total_point
+                        )
+                        if not matched:
+                            bet['money'] = -int(bet['money'])
+                        user_bet_res.append({
+                            'id': user_id,
+                            'money': int(bet['money']),
+                            'matched': matched
+                        })
+                        result_message += message
+                    else:
+                        result_message += f"❌ 未知下注类型：{bet_type}，输了：{bet['money']}!\n"
 
         # 统计玩家输赢
         if user_bet_res:
