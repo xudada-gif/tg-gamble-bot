@@ -38,7 +38,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 逐个检查规则
     for rule_name, pattern in BETTING_RULES.items():
         match = re.match(pattern, message)
-        print(context.bot_data.get("running"))
         if match and context.bot_data.get("running"):
             full_name = " ".join(filter(None, [update.effective_user.first_name, update.effective_user.last_name])).strip()
             user_info = get_user_info_db(curses, user_id)
@@ -107,7 +106,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if udb_money < money:
                    return await update.message.reply_text(f"❌余额不足！")
                 bet_data = {"type": rule_name, "position": dice, "dice_value": dice, "money": money}
-            print(bet_data)
             place_bet_db(conn, curses, user_id, bet_data)
             await update.message.reply_text(f"{message} 下注成功！")
 
@@ -225,4 +223,42 @@ async def show_bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(f"🎲 你押注了： \n{res}")
     conn.close()
+
+
+@log_command
+async def fanshui(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    conn, cursor = connect_to_db()
+    today_bets = get_user_today_bets(cursor,user_id)
+    today_money = 0
+    for today_bet in today_bets:
+        if today_bet['money'] < 0:
+            today_money -= today_bet['money']
+        else:
+            today_money += today_bet['money']
+    if today_money < 100:
+        await update.message.reply_text(f"您今日流水不足100,当前流水:{today_money}")
+        return
+    fs = round(today_money/100,2)
+    await update.message.reply_text(f"当前流水: {today_money}, 反水: {fs}成功")
+
+
+@log_command
+async def shuying(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """"""
+    user_id = update.effective_user.id
+    full_name = update.effective_user.full_name
+    username = update.effective_user.username
+    conn, cursor = connect_to_db()
+    today_bets = get_user_today_bets(cursor,user_id)
+    today_money = 0
+    for today_bet in today_bets:
+        if today_bet['money'] < 0:
+            today_money -= today_bet['money']
+        else:
+            today_money += today_bet['money']
+
+    await update.message.reply_text(f"{full_name}(@{username}) 今日流水: {today_money}")
+
+
 

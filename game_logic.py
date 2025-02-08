@@ -8,7 +8,7 @@ from io import BytesIO
 from telegram import Update
 from telegram.ext import CallbackContext
 
-from database import connect_to_db, update_balance_db, get_users_bet_info_db, delete_bets_db
+from database import connect_to_db, update_balance_db, get_users_bet_info_db, delete_bets_db, add_bet_info_db
 from game_logic_func import BetHandler, issue, safe_send_message, safe_send_dice, dice_photo, get_top_bettor, \
     format_bet_data, get_animation_file_id
 
@@ -74,15 +74,13 @@ async def countdown_task(update: Update, context: CallbackContext, chat_id: int,
     conn, cursor = connect_to_db()
     users_bet = get_users_bet_info_db(cursor)
     context.bot_data["bet_users"] = users_bet
-
     # 获取本轮用户下注信息
     output = await format_bet_data(users_bet)
     # 获取押注金额最多的用户
     max_users = await get_top_bettor(users_bet)
-
     if len(max_users) == 1:
         context.bot_data["highest_bet_userid"] = max_users[0]['user_id']
-        roll_prompt = f"请掷骰子玩家：@{max_users[0]['name']} {max_users[0]['user_id']} (总投注 {max_users[0]['total_money']}u)"
+        roll_prompt = f"请掷骰子玩家：@{max_users[0]['name']} @{max_users[0]['user_id']} (总投注 {max_users[0]['total_money']}u)"
     elif max_users[0]['total_money'] < 10:
         roll_prompt = "没有玩家下注超过10u，将由机器人投掷"
     elif len(max_users) >= 2:
@@ -93,7 +91,7 @@ async def countdown_task(update: Update, context: CallbackContext, chat_id: int,
     caption_stop_game = f"""
      ----{issue_num}期下注玩家-----
 {output}
-——————————————————————
+---------------
 👉轻触【<code>🎲</code>】复制投掷。
 {roll_prompt}
 
@@ -224,7 +222,8 @@ async def process_dice_result(update: Update, context: CallbackContext, chat_id:
                         user_bet_res.append({
                             'id': user_id,
                             'money': int(bet['money']),
-                            'matched': matched
+                            'matched': matched,
+                            'bet_type':bet_type
                         })
                         result_message += message
                     else:
@@ -232,15 +231,23 @@ async def process_dice_result(update: Update, context: CallbackContext, chat_id:
 
         # 统计玩家输赢
         if user_bet_res:
+            conn, cursor = connect_to_db()
             money_sum = defaultdict(int)
             for item in user_bet_res:
                 money_sum[item['id']] += item['money']
             result = dict(money_sum)
 
+            for i in user_bet_res:
+                money = int(i['money'])
+                # 确保 matched 是布尔值
+                matched = bool(i['matched']) if isinstance(i['matched'], (bool, int)) else str(
+                    i['matched']).lower() == 'true'
+                add_bet_info_db(conn, cursor, i['id'], money, i['bet_type'], matched)
+
             # 更新用户余额
-            conn, cursor = connect_to_db()
             ids = list(result.keys())
             money_values = list(result.values())
+
             update_balance_db(conn, cursor, ids, money_values)
 
             # 清空用户下注内容

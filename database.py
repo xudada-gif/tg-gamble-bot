@@ -59,7 +59,7 @@ def create_table_if_not_exists_db(cursor, conn):
             CREATE TABLE IF NOT EXISTS transactions (
                 transaction_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,  # 添加 AUTO_INCREMENT
                 user_id BIGINT UNSIGNED  NOT NULL,
-                amount INT UNSIGNED NOT NULL,
+                amount INT NOT NULL,
                 transaction_type TINYINT NOT NULL,
                 transaction_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (transaction_id),  
@@ -71,8 +71,9 @@ def create_table_if_not_exists_db(cursor, conn):
             CREATE TABLE IF NOT EXISTS bets (
                 id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,  
                 user_id BIGINT UNSIGNED NOT NULL,  
-                money INT UNSIGNED NOT NULL,  
+                money INT NOT NULL,
                 bet_type TINYINT NOT NULL,  -- 允许更多下注类型
+                win TINYINT(1) NOT NULL DEFAULT 0,  -- 0: 输, 1: 赢
                 bet_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  
                 PRIMARY KEY (id),  
                 FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,  
@@ -85,9 +86,28 @@ def create_table_if_not_exists_db(cursor, conn):
         print(f"❌ 创建表失败：{err}")
 
 
+# **定义下注类型映射**
+BET_TYPE_MAPPING = {
+    "大小": 1,  # 例如 "大小" 映射为 1
+    "大小单双": 2,  # 例如 "单双" 映射为 2
+    "和值": 3,
+    "对子": 4,
+    "指定对子": 5,
+    "顺子": 6,
+    "豹子": 7,
+    "指定豹子": 8,
+    "定位胆": 9
+}
+
 def add_user_db(conn, cursor, user_id: int, username: str, name: str, def_money: int):
     """添加新用户（如果不存在）"""
     cursor.execute("INSERT IGNORE INTO users (user_id, username, name, money) VALUES (%s, %s, %s, %s)", (user_id, username, name, def_money))
+    conn.commit()
+
+def add_bet_info_db(conn, cursor, user_id: int, money: int, bet_type:str, win):
+    """添加用户押注信息"""
+    bet_type = BET_TYPE_MAPPING.get(bet_type)
+    cursor.execute("INSERT IGNORE INTO bets (user_id, money, bet_type, win) VALUES (%s, %s, %s, %s)", (user_id, money, bet_type, win))
     conn.commit()
 
 def get_user_id_db(cursor, username:str):
@@ -182,3 +202,10 @@ def get_users_moneys_info_db(cursor):
     result = cursor.fetchall()
     return result
 
+
+def get_user_today_bets(cursor, user_id):
+    """获取用户今天的所有下注流水"""
+    cursor.execute(
+        "SELECT * FROM bets WHERE user_id = %s AND DATE(bet_time) = CURDATE()", (user_id,)
+    )
+    return cursor.fetchall()  # 返回所有符合条件的记录
