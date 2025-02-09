@@ -10,6 +10,8 @@ start_game.gif
 stop_game.gif
 # C extensions
 *.so
+docs/
+mkdocs.yml
 
 # Distribution / packaging
 .Python

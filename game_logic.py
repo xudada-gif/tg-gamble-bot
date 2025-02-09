@@ -8,7 +8,7 @@ from io import BytesIO
 from telegram import Update
 from telegram.ext import CallbackContext
 
-from database import connect_to_db, update_balance_db, get_users_bet_info_db, delete_bets_db, add_bet_info_db
+from database import DatabaseManager
 from game_logic_func import BetHandler, issue, safe_send_message, safe_send_dice, dice_photo, get_top_bettor, \
     format_bet_data, get_animation_file_id
 
@@ -71,55 +71,60 @@ async def countdown_task(update: Update, context: CallbackContext, chat_id: int,
     context.bot_data["running"] = False
 
     gif_stop_game = "./stop_game.gif"
-    conn, cursor = connect_to_db()
-    users_bet = get_users_bet_info_db(cursor)
-    context.bot_data["bet_users"] = users_bet
-    # 获取本轮用户下注信息
-    output = await format_bet_data(users_bet)
-    # 获取押注金额最多的用户
-    max_users = await get_top_bettor(users_bet)
-    if len(max_users) == 1:
-        context.bot_data["highest_bet_userid"] = max_users[0]['user_id']
-        roll_prompt = f"请掷骰子玩家：@{max_users[0]['name']} @{max_users[0]['user_id']} (总投注 {max_users[0]['total_money']}u)"
-    elif max_users[0]['total_money'] < 10:
-        roll_prompt = "没有玩家下注超过10u，将由机器人投掷"
-    elif len(max_users) >= 2:
-        roll_prompt = "存在多个最大下注玩家，由机器人下注"
-    else:
-        roll_prompt = "无玩家下注，跳过掷骰子阶段"
+    db = DatabaseManager()
+    try:
+        users_bet = db.get_users_bet_info()
+        context.bot_data["bet_users"] = users_bet
+        # 获取本轮用户下注信息
+        output = await format_bet_data(users_bet)
+        # 获取押注金额最多的用户
+        max_users = await get_top_bettor(users_bet)
+        if len(max_users) == 1:
+            context.bot_data["highest_bet_userid"] = max_users[0]['user_id']
+            roll_prompt = f"请掷骰子玩家：@{max_users[0]['name']} @{max_users[0]['user_id']} (总投注 {max_users[0]['total_money']}u)"
+        elif max_users[0]['total_money'] < 10:
+            roll_prompt = "没有玩家下注超过10u，将由机器人投掷"
+        elif len(max_users) >= 2:
+            roll_prompt = "存在多个最大下注玩家，由机器人下注"
+        else:
+            roll_prompt = "无玩家下注，跳过掷骰子阶段"
+        caption_stop_game = f"""
+             ----{issue_num}期下注玩家-----
+        {output}
+        ---------------
+        👉轻触【<code>🎲</code>】复制投掷。
+        {roll_prompt}
+    
+        <b>25秒内掷出3颗骰子，超时机器补发，无争议</b>
+            """
+        # 直接使用缓存的 file_id
+        stop_file_id = context.bot_data.get("stop_game_file_id")
+        if not stop_file_id:
+            await get_animation_file_id(
+                context, chat_id, "stop_game_file_id", gif_stop_game, caption_stop_game)
+        else:
+            await context.bot.send_animation(
+                chat_id=chat_id,
+                animation=stop_file_id,
+                caption=caption_stop_game,
+                read_timeout=20,
+                parse_mode='HTML'
+            )
 
-    caption_stop_game = f"""
-     ----{issue_num}期下注玩家-----
-{output}
----------------
-👉轻触【<code>🎲</code>】复制投掷。
-{roll_prompt}
+        if len(max_users) == 1 and max_users[0]['total_money'] >= 10:
+            context.bot_data["highest_bet_userid"] = max_users[0]['user_id']
+        if len(max_users) != 1:
+            await bot_dice_roll(update, context)
 
-<b>25秒内掷出3颗骰子，超时机器补发，无争议</b>
-    """
-    # 直接使用缓存的 file_id
-    stop_file_id = context.bot_data.get("stop_game_file_id")
-    if not stop_file_id:
-        await get_animation_file_id(
-            context, chat_id, "stop_game_file_id", gif_stop_game,caption_stop_game)
-    else:
-        await context.bot.send_animation(
-            chat_id=chat_id,
-            animation=stop_file_id,
-            caption=caption_stop_game,
-            read_timeout=20,
-            parse_mode='HTML'
-        )
-
-
-    if len(max_users) == 1 and max_users[0]['total_money']>=10:
-        context.bot_data["highest_bet_userid"] = max_users[0]['user_id']
-    if len(max_users) != 1:
-        await bot_dice_roll(update, context)
-
+    except Exception as e:
+        logging.error(f"❌ 查询所有用户押注信息: {e}")
+    finally:
+        db.close()
     # 处理骰子逻辑
     context.bot_data["total_point"] = []
     await countdown_and_handle_dice(update, context, chat_id)
+
+
 
 
 async def countdown_and_handle_dice(update: Update, context: CallbackContext, chat_id: int):
@@ -231,27 +236,30 @@ async def process_dice_result(update: Update, context: CallbackContext, chat_id:
 
         # 统计玩家输赢
         if user_bet_res:
-            conn, cursor = connect_to_db()
-            money_sum = defaultdict(int)
-            for item in user_bet_res:
-                money_sum[item['id']] += item['money']
-            result = dict(money_sum)
+            db = DatabaseManager()
+            try:
+                money_sum = defaultdict(int)
+                for item in user_bet_res:
+                    money_sum[item['id']] += item['money']
+                result = dict(money_sum)
 
-            for i in user_bet_res:
-                money = int(i['money'])
-                # 确保 matched 是布尔值
-                matched = bool(i['matched']) if isinstance(i['matched'], (bool, int)) else str(
-                    i['matched']).lower() == 'true'
-                add_bet_info_db(conn, cursor, i['id'], money, i['bet_type'], matched)
+                for i in user_bet_res:
+                    money = int(i['money'])
+                    # 确保 matched 是布尔值
+                    matched = bool(i['matched']) if isinstance(i['matched'], (bool, int)) else str(
+                        i['matched']).lower() == 'true'
+                    db.add_bet_info(i['id'], money, i['bet_type'], matched)
 
-            # 更新用户余额
-            ids = list(result.keys())
-            money_values = list(result.values())
-
-            update_balance_db(conn, cursor, ids, money_values)
-
-            # 清空用户下注内容
-            delete_bets_db(conn, cursor)
+                # 更新用户余额
+                ids = list(result.keys())
+                money_values = list(result.values())
+                db.update_money(ids, money_values)
+                # 清空用户下注内容
+                db.delete_bets_db()
+            except Exception as e:
+                logging.error(f"❌ 统计玩家输赢: {e}")
+            finally:
+                db.close()
 
         # 生成骰子统计图片
         try:

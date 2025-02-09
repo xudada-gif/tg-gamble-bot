@@ -1,9 +1,11 @@
+import logging
+
 from telegram import Update
 from game_logic import  start_round
 from utils import admin_required, log_command, user_exists
 from telegram.ext import ContextTypes, CallbackContext
 from game_logic_func import format_bet_data
-from database import connect_to_db, get_users_bet_info_db, get_users_moneys_info_db, update_balance_db, get_user_id_db
+from database import DatabaseManager
 import os
 
 
@@ -29,11 +31,6 @@ async def start_game(update: Update, context: CallbackContext):
 async def end_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.bot_data["running"] = False
     username = update.effective_user.first_name + update.effective_user.last_name
-    conn, cursor = connect_to_db()
-    if conn is None:
-        await update.message.reply_text("❌ 数据库连接失败，请稍后重试！")
-        return
-
     await update.message.reply_text(f"{username}，这个是结束游戏")
 
 
@@ -42,36 +39,38 @@ async def end_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @admin_required
 async def show_bets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """查询所有用户押注信息"""
-    conn, cursor = connect_to_db()
-    if conn is None:
-        await update.message.reply_text("❌ 数据库连接失败，请稍后重试！")
-        return
-
-    users_info = get_users_bet_info_db(cursor)
-    if not users_info:
-        await update.message.reply_text(f"还没人押注！")
-        return
-    output = await format_bet_data(users_info)
-    await update.message.reply_text(output)
-
+    db = DatabaseManager()
+    try:
+        users_info = db.get_users_bet_info()
+        if not users_info:
+            await update.message.reply_text(f"还没人押注！")
+            return
+        output = await format_bet_data(users_info)
+        await update.message.reply_text(output)
+    except Exception as e:
+        logging.error(f"❌ 查询所有用户押注信息: {e}")
+    finally:
+        db.close()
 
 @log_command
 @admin_required
 async def show_moneys(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """查询所有用户余额"""
-    conn, cursor = connect_to_db()
-    if conn is None:
-        await update.message.reply_text("❌ 数据库连接失败，请稍后重试！")
-        return
-    # 排序：按余额从高到低
-    users_info = get_users_moneys_info_db(cursor)
-    sorted_data = sorted(users_info, key=lambda x: x['money'], reverse=True)
-    # 拼接成一段内容
-    output = ""
-    for user in sorted_data:
-        output += f"{user['name']}|{user['user_id']}|{user['money']}\n"
-    # 输出完整内容
-    await update.message.reply_text(f"名字——id——余额\n{output.strip()}")
+    db = DatabaseManager()
+    try:
+        # 排序：按余额从高到低
+        users_info = db.get_users_money_info()
+        sorted_data = sorted(users_info, key=lambda x: x['money'], reverse=True)
+        # 拼接成一段内容
+        output = ""
+        for user in sorted_data:
+            output += f"{user['name']}|{user['user_id']}|{user['money']}\n"
+        # 输出完整内容
+        await update.message.reply_text(f"名字——id——余额\n{output.strip()}")
+    except Exception as e:
+        logging.error(f"❌ 查询所有用户余额: {e}")
+    finally:
+        db.close()
 
 
 @log_command
@@ -80,13 +79,17 @@ async def user_money_add(update: Update, context: CallbackContext):
     """用户余额充值"""
     username = context.args[0].lstrip("@")  # 去掉 @
     money = context.args[1]
-    conn, cursor = connect_to_db()
-    if not user_exists(cursor,username):
-        await update.message.reply_text(f"{username}不存在，请执行/start初始化用户")
-        return
-    update_balance_db(conn,cursor,[username],[money])
-    await update.message.reply_text(f"{username}充值{money}成功！")
-
+    db = DatabaseManager()
+    try:
+        if not user_exists(username):
+            await update.message.reply_text(f"{username}不存在，请执行/start初始化用户")
+            return
+        db.update_money([username],[money])
+        await update.message.reply_text(f"{username}充值{money}成功！")
+    except Exception as e:
+        logging.error(f"❌ 用户余额充值: {e}")
+    finally:
+        db.close()
 
 @log_command
 @admin_required
@@ -95,21 +98,31 @@ async def user_money_rev(update: Update, context: CallbackContext):
     username = context.args[0].lstrip("@")  # 去掉 @
     money = context.args[1]
     money = -int(money)
-    conn, cursor = connect_to_db()
-    if not user_exists(cursor,username):
-        await update.message.reply_text(f"{username}不存在，请执行/start初始化用户")
-        return
-    update_balance_db(conn,cursor,[username],[money])
-    await update.message.reply_text(f"{username}提现{money}成功！")
+    db = DatabaseManager()
+    try:
+        if not user_exists(username):
+            await update.message.reply_text(f"{username}不存在，请执行/start初始化用户")
+            return
+        db.update_money([username],[money])
+        await update.message.reply_text(f"{username}提现{money}成功！")
+    except Exception as e:
+        logging.error(f"❌ 用户余额提现: {e}")
+    finally:
+        db.close()
 
 @log_command
 @admin_required
 async def get_user_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """ 通过 @username 获取用户 ID（仅限群组） """
     username = context.args[0].lstrip("@") # 去掉 @
-    conn, cursor = connect_to_db()
-    if not user_exists(cursor, username):
-        await update.message.reply_text(f"{username}不存在，请执行/start初始化用户")
-        return
-    user_id = get_user_id_db(cursor, username)
-    await update.message.reply_text(f"{username}ID:{user_id}")
+    db = DatabaseManager()
+    try:
+        if not user_exists(username):
+            await update.message.reply_text(f"{username}不存在，请执行/start初始化用户")
+            return
+        user_id = db.get_user_id(username)
+        await update.message.reply_text(f"{username}ID:{user_id}")
+    except Exception as e:
+        logging.error(f"❌ 通过 @username 获取用户 ID: {e}")
+    finally:
+        db.close()
